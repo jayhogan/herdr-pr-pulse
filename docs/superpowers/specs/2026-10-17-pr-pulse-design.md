@@ -223,9 +223,8 @@ fingerprint with no change.
   own tab active, not hidden behind a zoomed pane). Switching into the workspace on another tab
   is not a visit. Starting up while visible counts as a visit. Two copies in one workspace both
   stamp; harmless.
-- On a visit, the copy stamps the PRs **currently on its screen in the current view**: Workspace
-  view stamps `ws_seen`; Mine view stamps `mine_seen`. If the view is switched with Tab during a
-  visit, the newly shown PRs are stamped at that moment.
+- On a visit, the copy stamps the PRs it shows: a Workspace copy stamps `ws_seen`; a Mine copy
+  stamps `mine_seen`. PRs that newly appear during a visit are stamped when they appear.
 - Workspace view marks a PR when `change_time > ws_seen` (the value from before this visit).
 - Mine view marks a PR when `change_time > max(ws_seen, mine_seen)` (values from before this
   visit).
@@ -246,7 +245,10 @@ fingerprint with no change.
 
 ## 10. Views
 
-**Tab** switches views; each copy remembers its last view in `prefs.json` keyed by checkout path.
+**The view is chosen at launch and fixed for the life of the process** (Jay's decision): run
+`herdr-pr-pulse workspace` or `herdr-pr-pulse mine`. To change views, quit and relaunch. With no
+argument it starts in the Workspace view, since a PR Pulse pane usually lives inside a working
+workspace. There is no in-app view switch.
 
 **Mine view** (boards 1, 1b, 3): open PRs authored and/or assigned, across repos. `s` cycles
 both → authored → assigned (default both). Columns at 120 cols: attention, layer tree (`├─ n`,
@@ -278,10 +280,13 @@ cols; stacked below that.
 **Keys**: j/k ↑/↓ move · ⏎ jump · o open PR in browser · r refresh · s scope (Mine) · S sort
 (urgency default; others: updated, repo) · h/l ←/→ fold/unfold stack (manual only; persisted in
 `folds.json`) · ␣ drawer · / filter (repo, #, title text) · ? help overlay (board 5, doubles as
-legend) · Tab view · q / Ctrl-C quit.
+legend) · q / Ctrl-C quit.
 
-**CLI**: `herdr-pr-pulse` (TUI), `herdr-pr-pulse --fixtures` (render from `tests/fixtures`,
-no network, no herdr required).
+**CLI**: `herdr-pr-pulse [workspace|mine] [--fixtures]`. `--fixtures` renders from
+`tests/fixtures` with no network and no herdr required (it pretends to run inside the fixture
+snapshot's audit-log workspace). The README's workspace-manager layout snippet shows a
+`herdr-pr-pulse workspace` pane in each working workspace and a `herdr-pr-pulse mine` pane in a
+home workspace.
 
 ## 11. States (board 4)
 
@@ -307,7 +312,7 @@ Flat `src/`, mirroring the template:
 
 | module | role | pure? |
 |---|---|---|
-| `main.rs` | args (`--fixtures`), env checks, event loop, spawn fetch thread | |
+| `main.rs` | args (`workspace`/`mine`, `--fixtures`), env checks, event loop, spawn fetch thread | |
 | `herdr.rs` | snapshot types/parse/fetch, `focus_pane` | parse yes |
 | `git.rs` | cwd → (repo slug, branch), cached | |
 | `github.rs` | `gh api graphql` runner, query text (`src/*.graphql` via `include_str!`), error classification | |
@@ -355,7 +360,7 @@ board 6). Unit tests for stacks, attention, changes, workspaces. insta snapshots
 - Spec wins over mockups: ▲▲ shown in Mine; `s` cycles three scopes; ∅ yellow.
 - Drawer side-by-side threshold 100 cols.
 - Extra sorts: updated, repo.
-- Each copy remembers its last view.
+- With no view argument, PR Pulse starts in the Workspace view.
 - A visit requires PR Pulse's pane to be on screen (own tab active, not zoomed away), not just
   its workspace focused.
 - "Mergeable through k" counts layers ready in order; only the bottom one shows ◆.
