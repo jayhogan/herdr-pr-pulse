@@ -1,0 +1,1326 @@
+{
+  "data": {
+    "p0": {
+      "id": "PR_1284",
+      "number": 1284,
+      "title": "audit: schema for audit_log table",
+      "url": "https://github.com/heard/heard-ts/pull/1284",
+      "state": "OPEN",
+      "isDraft": false,
+      "closedAt": null,
+      "updatedAt": "2026-10-17T14:20:00Z",
+      "author": {
+        "login": "jayhogan",
+        "__typename": "User"
+      },
+      "assignees": {
+        "nodes": []
+      },
+      "repository": {
+        "nameWithOwner": "heard/heard-ts"
+      },
+      "headRefName": "audit/schema",
+      "headRefOid": "50525f3132383450525f3132383450525f313238",
+      "baseRefName": "main",
+      "mergeStateStatus": "CLEAN",
+      "reviewDecision": "APPROVED",
+      "baseRef": {
+        "name": "main",
+        "compare": {
+          "behindBy": 0
+        }
+      },
+      "stackEntry": {
+        "position": 1,
+        "stack": {
+          "id": "PRS_audit",
+          "number": 1296,
+          "entries": {
+            "nodes": [
+              {
+                "position": 1,
+                "pullRequest": {
+                  "id": "PR_1284"
+                }
+              },
+              {
+                "position": 2,
+                "pullRequest": {
+                  "id": "PR_1287"
+                }
+              },
+              {
+                "position": 3,
+                "pullRequest": {
+                  "id": "PR_1291"
+                }
+              },
+              {
+                "position": 4,
+                "pullRequest": {
+                  "id": "PR_1295"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "statusCheckRollup": {
+        "state": "SUCCESS",
+        "contexts": {
+          "nodes": [
+            {
+              "__typename": "CheckRun",
+              "name": "build",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:10:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "lint",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:11:05Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "typecheck",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:12:10Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "test-unit",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:13:15Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "test-integration",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:14:20Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "test-e2e",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:15:25Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "migrations",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:16:30Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "docker-build",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:17:35Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "codeql",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:18:40Z",
+              "isRequired": true
+            }
+          ]
+        }
+      },
+      "reviewThreads": {
+        "nodes": []
+      },
+      "latestReviews": {
+        "nodes": [
+          {
+            "state": "APPROVED",
+            "submittedAt": "2026-10-17T14:12:00Z",
+            "author": {
+              "login": "kayla",
+              "__typename": "User"
+            }
+          }
+        ]
+      },
+      "reviewRequests": {
+        "nodes": []
+      }
+    },
+    "p1": {
+      "id": "PR_1287",
+      "number": 1287,
+      "title": "audit: kafka producer for audit events",
+      "url": "https://github.com/heard/heard-ts/pull/1287",
+      "state": "OPEN",
+      "isDraft": false,
+      "closedAt": null,
+      "updatedAt": "2026-10-17T14:26:08Z",
+      "author": {
+        "login": "jayhogan",
+        "__typename": "User"
+      },
+      "assignees": {
+        "nodes": []
+      },
+      "repository": {
+        "nameWithOwner": "heard/heard-ts"
+      },
+      "headRefName": "audit/kafka-producer",
+      "headRefOid": "50525f3132383750525f3132383750525f313238",
+      "baseRefName": "audit/schema",
+      "mergeStateStatus": "BLOCKED",
+      "reviewDecision": "CHANGES_REQUESTED",
+      "baseRef": {
+        "name": "audit/schema",
+        "compare": {
+          "behindBy": 0
+        }
+      },
+      "stackEntry": {
+        "position": 2,
+        "stack": {
+          "id": "PRS_audit",
+          "number": 1296,
+          "entries": {
+            "nodes": [
+              {
+                "position": 1,
+                "pullRequest": {
+                  "id": "PR_1284"
+                }
+              },
+              {
+                "position": 2,
+                "pullRequest": {
+                  "id": "PR_1287"
+                }
+              },
+              {
+                "position": 3,
+                "pullRequest": {
+                  "id": "PR_1291"
+                }
+              },
+              {
+                "position": 4,
+                "pullRequest": {
+                  "id": "PR_1295"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "statusCheckRollup": {
+        "state": "FAILURE",
+        "contexts": {
+          "nodes": [
+            {
+              "__typename": "CheckRun",
+              "name": "build",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:10:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "lint",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:11:05Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "typecheck",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:12:10Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "test-unit",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:13:15Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "test-integration",
+              "status": "COMPLETED",
+              "conclusion": "FAILURE",
+              "completedAt": "2026-10-17T14:26:08Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "test-e2e",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:15:25Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "migrations",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:16:30Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "docker-build",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:17:35Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "codeql",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:18:40Z",
+              "isRequired": true
+            }
+          ]
+        }
+      },
+      "reviewThreads": {
+        "nodes": [
+          {
+            "isResolved": false,
+            "comments": {
+              "nodes": [
+                {
+                  "author": {
+                    "login": "art",
+                    "__typename": "User"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "isResolved": false,
+            "comments": {
+              "nodes": [
+                {
+                  "author": {
+                    "login": "art",
+                    "__typename": "User"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "isResolved": false,
+            "comments": {
+              "nodes": [
+                {
+                  "author": {
+                    "login": "kayla",
+                    "__typename": "User"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "isResolved": true,
+            "comments": {
+              "nodes": [
+                {
+                  "author": {
+                    "login": "art",
+                    "__typename": "User"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "latestReviews": {
+        "nodes": [
+          {
+            "state": "CHANGES_REQUESTED",
+            "submittedAt": "2026-10-17T14:21:00Z",
+            "author": {
+              "login": "art",
+              "__typename": "User"
+            }
+          },
+          {
+            "state": "COMMENTED",
+            "submittedAt": "2026-10-17T14:15:00Z",
+            "author": {
+              "login": "claude[bot]",
+              "__typename": "Bot"
+            }
+          }
+        ]
+      },
+      "reviewRequests": {
+        "nodes": [
+          {
+            "requestedReviewer": {
+              "__typename": "User",
+              "login": "kayla"
+            }
+          }
+        ]
+      }
+    },
+    "p2": {
+      "id": "PR_1291",
+      "number": 1291,
+      "title": "audit: consumer writes to audit_log",
+      "url": "https://github.com/heard/heard-ts/pull/1291",
+      "state": "OPEN",
+      "isDraft": false,
+      "closedAt": null,
+      "updatedAt": "2026-10-17T14:25:00Z",
+      "author": {
+        "login": "jayhogan",
+        "__typename": "User"
+      },
+      "assignees": {
+        "nodes": []
+      },
+      "repository": {
+        "nameWithOwner": "heard/heard-ts"
+      },
+      "headRefName": "audit/consumer",
+      "headRefOid": "50525f3132393150525f3132393150525f313239",
+      "baseRefName": "audit/kafka-producer",
+      "mergeStateStatus": "BLOCKED",
+      "reviewDecision": "REVIEW_REQUIRED",
+      "baseRef": {
+        "name": "audit/kafka-producer",
+        "compare": {
+          "behindBy": 0
+        }
+      },
+      "stackEntry": {
+        "position": 3,
+        "stack": {
+          "id": "PRS_audit",
+          "number": 1296,
+          "entries": {
+            "nodes": [
+              {
+                "position": 1,
+                "pullRequest": {
+                  "id": "PR_1284"
+                }
+              },
+              {
+                "position": 2,
+                "pullRequest": {
+                  "id": "PR_1287"
+                }
+              },
+              {
+                "position": 3,
+                "pullRequest": {
+                  "id": "PR_1291"
+                }
+              },
+              {
+                "position": 4,
+                "pullRequest": {
+                  "id": "PR_1295"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "statusCheckRollup": {
+        "state": "SUCCESS",
+        "contexts": {
+          "nodes": [
+            {
+              "__typename": "CheckRun",
+              "name": "build",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:10:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "lint",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:11:05Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "typecheck",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:12:10Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "test-unit",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:13:15Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "test-integration",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:14:20Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "test-e2e",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:15:25Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "migrations",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:16:30Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "docker-build",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:17:35Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "codeql",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:18:40Z",
+              "isRequired": true
+            }
+          ]
+        }
+      },
+      "reviewThreads": {
+        "nodes": [
+          {
+            "isResolved": false,
+            "comments": {
+              "nodes": [
+                {
+                  "author": {
+                    "login": "kayla",
+                    "__typename": "User"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "latestReviews": {
+        "nodes": []
+      },
+      "reviewRequests": {
+        "nodes": [
+          {
+            "requestedReviewer": {
+              "__typename": "User",
+              "login": "kayla"
+            }
+          },
+          {
+            "requestedReviewer": {
+              "__typename": "User",
+              "login": "art"
+            }
+          }
+        ]
+      }
+    },
+    "p3": {
+      "id": "PR_1295",
+      "number": 1295,
+      "title": "audit: viewer UI",
+      "url": "https://github.com/heard/heard-ts/pull/1295",
+      "state": "OPEN",
+      "isDraft": true,
+      "closedAt": null,
+      "updatedAt": "2026-10-17T14:24:00Z",
+      "author": {
+        "login": "jayhogan",
+        "__typename": "User"
+      },
+      "assignees": {
+        "nodes": []
+      },
+      "repository": {
+        "nameWithOwner": "heard/heard-ts"
+      },
+      "headRefName": "audit/viewer",
+      "headRefOid": "50525f3132393550525f3132393550525f313239",
+      "baseRefName": "audit/consumer",
+      "mergeStateStatus": "DRAFT",
+      "reviewDecision": null,
+      "baseRef": {
+        "name": "audit/consumer",
+        "compare": {
+          "behindBy": 0
+        }
+      },
+      "stackEntry": {
+        "position": 4,
+        "stack": {
+          "id": "PRS_audit",
+          "number": 1296,
+          "entries": {
+            "nodes": [
+              {
+                "position": 1,
+                "pullRequest": {
+                  "id": "PR_1284"
+                }
+              },
+              {
+                "position": 2,
+                "pullRequest": {
+                  "id": "PR_1287"
+                }
+              },
+              {
+                "position": 3,
+                "pullRequest": {
+                  "id": "PR_1291"
+                }
+              },
+              {
+                "position": 4,
+                "pullRequest": {
+                  "id": "PR_1295"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "statusCheckRollup": {
+        "state": "PENDING",
+        "contexts": {
+          "nodes": [
+            {
+              "__typename": "CheckRun",
+              "name": "build",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:10:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "lint",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:11:05Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "typecheck",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:12:10Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "test-unit",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:13:15Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "test-integration",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:14:20Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "test-e2e",
+              "status": "IN_PROGRESS",
+              "conclusion": null,
+              "completedAt": null,
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "migrations",
+              "status": "IN_PROGRESS",
+              "conclusion": null,
+              "completedAt": null,
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "docker-build",
+              "status": "IN_PROGRESS",
+              "conclusion": null,
+              "completedAt": null,
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "codeql",
+              "status": "IN_PROGRESS",
+              "conclusion": null,
+              "completedAt": null,
+              "isRequired": true
+            }
+          ]
+        }
+      },
+      "reviewThreads": {
+        "nodes": []
+      },
+      "latestReviews": {
+        "nodes": []
+      },
+      "reviewRequests": {
+        "nodes": []
+      }
+    },
+    "p4": {
+      "id": "PR_412",
+      "number": 412,
+      "title": "thread model",
+      "url": "https://github.com/heard/docket/pull/412",
+      "state": "OPEN",
+      "isDraft": false,
+      "closedAt": null,
+      "updatedAt": "2026-10-17T14:10:00Z",
+      "author": {
+        "login": "jayhogan",
+        "__typename": "User"
+      },
+      "assignees": {
+        "nodes": []
+      },
+      "repository": {
+        "nameWithOwner": "heard/docket"
+      },
+      "headRefName": "thread-model/model",
+      "headRefOid": "50525f34313250525f34313250525f3431325052",
+      "baseRefName": "main",
+      "mergeStateStatus": "DIRTY",
+      "reviewDecision": "APPROVED",
+      "baseRef": {
+        "name": "main",
+        "compare": {
+          "behindBy": 0
+        }
+      },
+      "stackEntry": null,
+      "statusCheckRollup": {
+        "state": "SUCCESS",
+        "contexts": {
+          "nodes": [
+            {
+              "__typename": "CheckRun",
+              "name": "build",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:10:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "lint",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:11:05Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "typecheck",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:12:10Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "test",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:13:15Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "docker-build",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:14:20Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "codeql",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:15:25Z",
+              "isRequired": true
+            }
+          ]
+        }
+      },
+      "reviewThreads": {
+        "nodes": [
+          {
+            "isResolved": false,
+            "comments": {
+              "nodes": [
+                {
+                  "author": {
+                    "login": "kayla",
+                    "__typename": "User"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "isResolved": false,
+            "comments": {
+              "nodes": [
+                {
+                  "author": {
+                    "login": "kayla",
+                    "__typename": "User"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "latestReviews": {
+        "nodes": [
+          {
+            "state": "APPROVED",
+            "submittedAt": "2026-10-17T13:30:00Z",
+            "author": {
+              "login": "kayla",
+              "__typename": "User"
+            }
+          }
+        ]
+      },
+      "reviewRequests": {
+        "nodes": []
+      }
+    },
+    "p5": {
+      "id": "PR_415",
+      "number": 415,
+      "title": "thread sidebar",
+      "url": "https://github.com/heard/docket/pull/415",
+      "state": "OPEN",
+      "isDraft": false,
+      "closedAt": null,
+      "updatedAt": "2026-10-17T14:10:00Z",
+      "author": {
+        "login": "jayhogan",
+        "__typename": "User"
+      },
+      "assignees": {
+        "nodes": []
+      },
+      "repository": {
+        "nameWithOwner": "heard/docket"
+      },
+      "headRefName": "thread-model/sidebar",
+      "headRefOid": "50525f34313550525f34313550525f3431355052",
+      "baseRefName": "thread-model/model",
+      "mergeStateStatus": "CLEAN",
+      "reviewDecision": "REVIEW_REQUIRED",
+      "baseRef": {
+        "name": "thread-model/model",
+        "compare": {
+          "behindBy": 0
+        }
+      },
+      "stackEntry": null,
+      "statusCheckRollup": {
+        "state": "SUCCESS",
+        "contexts": {
+          "nodes": [
+            {
+              "__typename": "CheckRun",
+              "name": "build",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:10:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "lint",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:11:05Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "typecheck",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:12:10Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "test",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:13:15Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "docker-build",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:14:20Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "codeql",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:15:25Z",
+              "isRequired": true
+            }
+          ]
+        }
+      },
+      "reviewThreads": {
+        "nodes": []
+      },
+      "latestReviews": {
+        "nodes": []
+      },
+      "reviewRequests": {
+        "nodes": [
+          {
+            "requestedReviewer": {
+              "__typename": "User",
+              "login": "kayla"
+            }
+          }
+        ]
+      }
+    },
+    "p6": {
+      "id": "PR_1279",
+      "number": 1279,
+      "title": "pii: redact SSN in transcripts",
+      "url": "https://github.com/heard/heard-ts/pull/1279",
+      "state": "OPEN",
+      "isDraft": false,
+      "closedAt": null,
+      "updatedAt": "2026-10-17T13:00:00Z",
+      "author": {
+        "login": "jayhogan",
+        "__typename": "User"
+      },
+      "assignees": {
+        "nodes": []
+      },
+      "repository": {
+        "nameWithOwner": "heard/heard-ts"
+      },
+      "headRefName": "pii/redact-ssn",
+      "headRefOid": "50525f3132373950525f3132373950525f313237",
+      "baseRefName": "main",
+      "mergeStateStatus": "BEHIND",
+      "reviewDecision": "APPROVED",
+      "baseRef": {
+        "name": "main",
+        "compare": {
+          "behindBy": 6
+        }
+      },
+      "stackEntry": null,
+      "statusCheckRollup": {
+        "state": "SUCCESS",
+        "contexts": {
+          "nodes": [
+            {
+              "__typename": "CheckRun",
+              "name": "build",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:10:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "lint",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:11:05Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "typecheck",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:12:10Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "test-unit",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:13:15Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "test-integration",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:14:20Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "test-e2e",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:15:25Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "migrations",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:16:30Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "lint-docs",
+              "status": "COMPLETED",
+              "conclusion": "FAILURE",
+              "completedAt": "2026-10-17T13:00:00Z",
+              "isRequired": false
+            }
+          ]
+        }
+      },
+      "reviewThreads": {
+        "nodes": []
+      },
+      "latestReviews": {
+        "nodes": [
+          {
+            "state": "APPROVED",
+            "submittedAt": "2026-10-17T12:40:00Z",
+            "author": {
+              "login": "kayla",
+              "__typename": "User"
+            }
+          }
+        ]
+      },
+      "reviewRequests": {
+        "nodes": []
+      }
+    },
+    "p7": {
+      "id": "PR_1302",
+      "number": 1302,
+      "title": "notes: tokenizer",
+      "url": "https://github.com/heard/heard-ts/pull/1302",
+      "state": "OPEN",
+      "isDraft": false,
+      "closedAt": null,
+      "updatedAt": "2026-10-17T12:00:00Z",
+      "author": {
+        "login": "jayhogan",
+        "__typename": "User"
+      },
+      "assignees": {
+        "nodes": []
+      },
+      "repository": {
+        "nameWithOwner": "heard/heard-ts"
+      },
+      "headRefName": "notes/tokenize",
+      "headRefOid": "50525f3133303250525f3133303250525f313330",
+      "baseRefName": "main",
+      "mergeStateStatus": "UNKNOWN",
+      "reviewDecision": null,
+      "baseRef": {
+        "name": "main",
+        "compare": {
+          "behindBy": 0
+        }
+      },
+      "stackEntry": null,
+      "statusCheckRollup": {
+        "state": "PENDING",
+        "contexts": {
+          "nodes": [
+            {
+              "__typename": "CheckRun",
+              "name": "build",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:10:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "lint",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:11:05Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "typecheck",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:12:10Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "test-unit",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-17T14:13:15Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "test-integration",
+              "status": "IN_PROGRESS",
+              "conclusion": null,
+              "completedAt": null,
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "test-e2e",
+              "status": "IN_PROGRESS",
+              "conclusion": null,
+              "completedAt": null,
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "migrations",
+              "status": "IN_PROGRESS",
+              "conclusion": null,
+              "completedAt": null,
+              "isRequired": true
+            }
+          ]
+        }
+      },
+      "reviewThreads": {
+        "nodes": []
+      },
+      "latestReviews": {
+        "nodes": []
+      },
+      "reviewRequests": {
+        "nodes": []
+      }
+    },
+    "p8": {
+      "id": "PR_1270",
+      "number": 1270,
+      "title": "audit: feature flags",
+      "url": "https://github.com/heard/heard-ts/pull/1270",
+      "state": "MERGED",
+      "isDraft": false,
+      "closedAt": "2026-10-15T14:00:00Z",
+      "updatedAt": "2026-10-15T14:00:00Z",
+      "author": {
+        "login": "jayhogan",
+        "__typename": "User"
+      },
+      "assignees": {
+        "nodes": []
+      },
+      "repository": {
+        "nameWithOwner": "heard/heard-ts"
+      },
+      "headRefName": "audit/flags",
+      "headRefOid": "50525f3132373050525f3132373050525f313237",
+      "baseRefName": "main",
+      "mergeStateStatus": "UNKNOWN",
+      "reviewDecision": "APPROVED",
+      "baseRef": {
+        "name": "main",
+        "compare": {
+          "behindBy": 0
+        }
+      },
+      "stackEntry": null,
+      "statusCheckRollup": {
+        "state": "SUCCESS",
+        "contexts": {
+          "nodes": [
+            {
+              "__typename": "CheckRun",
+              "name": "build",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-15T14:10:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "lint",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-15T14:11:05Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "typecheck",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-15T14:12:10Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "test-unit",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-15T14:13:15Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "test-integration",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-15T14:14:20Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "test-e2e",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-15T14:15:25Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "migrations",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-15T14:16:30Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "docker-build",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-15T14:17:35Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "codeql",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-15T14:18:40Z",
+              "isRequired": true
+            }
+          ]
+        }
+      },
+      "reviewThreads": {
+        "nodes": []
+      },
+      "latestReviews": {
+        "nodes": [
+          {
+            "state": "APPROVED",
+            "submittedAt": "2026-10-15T13:00:00Z",
+            "author": {
+              "login": "kayla",
+              "__typename": "User"
+            }
+          }
+        ]
+      },
+      "reviewRequests": {
+        "nodes": []
+      }
+    },
+    "rateLimit": {
+      "cost": 1,
+      "remaining": 4990
+    }
+  }
+}

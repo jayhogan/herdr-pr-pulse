@@ -1,0 +1,73 @@
+{
+  "data": {
+    "viewer": {
+      "login": "jayhogan"
+    },
+    "authored": {
+      "nodes": [
+        {
+          "id": "PR_1284",
+          "repository": {
+            "nameWithOwner": "heard/heard-ts"
+          }
+        },
+        {
+          "id": "PR_1287",
+          "repository": {
+            "nameWithOwner": "heard/heard-ts"
+          }
+        },
+        {
+          "id": "PR_1291",
+          "repository": {
+            "nameWithOwner": "heard/heard-ts"
+          }
+        },
+        {
+          "id": "PR_1295",
+          "repository": {
+            "nameWithOwner": "heard/heard-ts"
+          }
+        },
+        {
+          "id": "PR_412",
+          "repository": {
+            "nameWithOwner": "heard/docket"
+          }
+        },
+        {
+          "id": "PR_1279",
+          "repository": {
+            "nameWithOwner": "heard/heard-ts"
+          }
+        },
+        {
+          "id": "PR_1302",
+          "repository": {
+            "nameWithOwner": "heard/heard-ts"
+          }
+        }
+      ]
+    },
+    "assigned": {
+      "nodes": [
+        {
+          "id": "PR_415",
+          "repository": {
+            "nameWithOwner": "heard/docket"
+          }
+        },
+        {
+          "id": "PR_1279",
+          "repository": {
+            "nameWithOwner": "heard/heard-ts"
+          }
+        }
+      ]
+    },
+    "rateLimit": {
+      "cost": 1,
+      "remaining": 4991
+    }
+  }
+}
