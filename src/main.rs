@@ -1,6 +1,7 @@
 #![allow(dead_code)] // removed in Task 21
 
 mod ago;
+mod app;
 mod attention;
 mod model;
 mod stacks;
