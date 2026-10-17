@@ -33,6 +33,7 @@ pub enum Reason {
     CiRunning,
     ReviewsPending,
     Computing,
+    Draft,
 }
 
 #[derive(Default, Debug, PartialEq, Eq)]
@@ -116,6 +117,9 @@ pub fn reasons(pr: &Pr) -> Vec<Reason> {
     if pr.merge == MergeState::Unknown {
         out.push(Reason::Computing);
     }
+    if pr.is_draft {
+        out.push(Reason::Draft);
+    }
     out
 }
 
@@ -128,15 +132,12 @@ pub fn mergeable_through(group: &Group) -> usize {
 }
 
 /// First open layer (1-based) that is not ready, with its most serious reason.
-/// Layers without a reason (plain drafts) are passed over.
 pub fn first_blocker(group: &Group) -> Option<(usize, Reason)> {
-    group.open_layers().enumerate().find_map(|(i, p)| {
-        if ready_in_order(p) {
-            None
-        } else {
-            reasons(p).into_iter().next().map(|r| (i + 1, r))
-        }
-    })
+    let (i, p) = group
+        .open_layers()
+        .enumerate()
+        .find(|(_, p)| !ready_in_order(p))?;
+    reasons(p).into_iter().next().map(|r| (i + 1, r))
 }
 
 pub fn count(levels: impl IntoIterator<Item = Attention>) -> Counts {
@@ -228,6 +229,30 @@ mod tests {
             Some((2, Reason::CiFailing("test-integration".into())))
         );
         assert_eq!(first_blocker(&group_of(412)), Some((1, Reason::Conflicts)));
+    }
+
+    #[test]
+    fn plain_draft_is_the_blocker() {
+        let audit = group_of(1284);
+        let mut draft = pr(1284);
+        draft.number = 9001;
+        draft.is_draft = true;
+        draft.ci.state = CiState::Passing;
+        draft.merge = MergeState::Draft;
+        draft.approved = None;
+        draft.changes_requested = false;
+        draft.unresolved_threads = 0;
+        assert_eq!(reasons(&draft), [Reason::Draft]);
+        let failing = audit
+            .layers
+            .iter()
+            .find(|p| p.number == 1287)
+            .unwrap()
+            .clone();
+        let mut g = audit.clone();
+        g.layers = vec![audit.layers[0].clone(), draft, failing];
+        assert_eq!(mergeable_through(&g), 1);
+        assert_eq!(first_blocker(&g), Some((2, Reason::Draft)));
     }
 
     #[test]
