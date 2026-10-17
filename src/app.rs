@@ -298,7 +298,7 @@ impl App {
                     SortOrder::Urgency => {
                         shown.sort_by(|a, b| b.0.rank.cmp(&a.0.rank).then(b.1.cmp(&a.1)));
                     }
-                    SortOrder::Updated => shown.sort_by(|a, b| b.1.cmp(&a.1)),
+                    SortOrder::Updated => shown.sort_by_key(|a| std::cmp::Reverse(a.1)),
                     SortOrder::Repo => {
                         shown.sort_by(|a, b| a.0.repo.cmp(&b.0.repo).then(b.1.cmp(&a.1)));
                     }
