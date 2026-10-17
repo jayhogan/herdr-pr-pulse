@@ -2,6 +2,7 @@
 
 mod ago;
 mod model;
+mod stacks;
 
 fn main() {
     eprintln!("usage: herdr-pr-pulse [workspace|mine] [--fixtures]");
