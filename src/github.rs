@@ -86,19 +86,37 @@ impl Gh for GhCli {
             .spawn()
             .map_err(spawn_err)?;
         let body = json!({"query": query, "variables": variables}).to_string();
-        child
-            .stdin
-            .take()
-            .expect("stdin is piped")
-            .write_all(body.as_bytes())
-            .map_err(spawn_err)?;
+        // Write errors (e.g. BrokenPipe when gh exits early) are judged after gh's exit status.
+        let mut stdin = child.stdin.take().expect("stdin is piped");
+        let written = stdin.write_all(body.as_bytes());
+        drop(stdin);
         let out = child.wait_with_output().map_err(spawn_err)?;
-        let text = |b: &[u8]| String::from_utf8_lossy(b).into_owned();
-        if out.status.success() {
-            Ok(text(&out.stdout))
-        } else {
-            Err(classify(&text(&out.stderr), None))
+        finish(
+            written,
+            out.status.success(),
+            &String::from_utf8_lossy(&out.stdout),
+            &String::from_utf8_lossy(&out.stderr),
+        )
+    }
+}
+
+/// Combines the stdin write result with gh's exit status. A non-zero exit is classified from
+/// stderr (it is the real cause even when the write hit a broken pipe); a broken pipe on a
+/// successful exit is harmless; any other write failure is reported on its own.
+fn finish(
+    written: std::io::Result<()>,
+    success: bool,
+    stdout: &str,
+    stderr: &str,
+) -> Result<String, GhError> {
+    if !success {
+        return Err(classify(stderr, None));
+    }
+    match written {
+        Err(e) if e.kind() != ErrorKind::BrokenPipe => {
+            Err(GhError::Other(format!("could not send request to gh: {e}")))
         }
+        _ => Ok(stdout.to_string()),
     }
 }
 
@@ -161,6 +179,9 @@ pub fn detail_query(targets: &[Target]) -> (String, Value) {
 }
 
 pub fn detail(gh: &dyn Gh, targets: &[Target]) -> Result<Vec<Pr>, GhError> {
+    if targets.is_empty() {
+        return Ok(Vec::new()); // an empty query would be invalid GraphQL
+    }
     let (query, vars) = detail_query(targets);
     let body = gh.graphql(&query, &vars)?;
     check_saml(&body)?;
@@ -357,6 +378,32 @@ mod tests {
             detail(&gh, &[target("A", None)]),
             Err(GhError::Other(_))
         ));
+    }
+
+    #[test]
+    fn detail_with_no_targets_skips_gh() {
+        let gh = FakeGh::new();
+        assert_eq!(detail(&gh, &[]).unwrap(), Vec::new());
+        assert!(gh.calls.borrow().is_empty());
+    }
+
+    #[test]
+    fn finish_prefers_gh_failure_over_broken_pipe() {
+        let pipe = || Err(std::io::Error::from(ErrorKind::BrokenPipe));
+        assert_eq!(
+            finish(pipe(), false, "", "HTTP 401: Bad credentials"),
+            Err(GhError::LoginExpired)
+        );
+        assert_eq!(
+            finish(pipe(), false, "", "SAML enforcement"),
+            Err(GhError::SamlSso)
+        );
+        assert_eq!(finish(pipe(), true, "ok", ""), Ok("ok".into()));
+        assert_eq!(finish(Ok(()), true, "ok", ""), Ok("ok".into()));
+        let other = Err(std::io::Error::from(ErrorKind::PermissionDenied));
+        assert!(
+            matches!(finish(other, true, "ok", ""), Err(GhError::Other(m)) if m.contains("send request"))
+        );
     }
 
     #[test]
