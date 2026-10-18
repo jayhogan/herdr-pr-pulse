@@ -263,8 +263,8 @@ attention, #, title, agent dot. Line 2: CI, review, threads, merge. Works at 44 
 and 34 (minimum), with board 2's narrow abbreviations. Header shows the focused pane's branch
 (`⎇`).
 
-**Row layout follows width, not view.** One shared row renderer: ≥ 100 cols → one-line table
-(board 1); 60–99 → one-line abbreviated (board 3); < 60 → two-line rows (board 2, with the 34-col
+**Row layout follows width, not view.** One shared row renderer: ≥ 120 cols → one-line table
+(board 1); 80–119 → one-line abbreviated (board 3); < 80 → two-line rows (board 2, with the 34-col
 abbreviations below 40). So Mine in a 44-col pane looks like board 2, and Workspace on a wide
 screen looks like board 1 (with the agent dot in the stack header and `⎇` on the checked-out
 row). Snapshot tests cover both views at all four widths.
