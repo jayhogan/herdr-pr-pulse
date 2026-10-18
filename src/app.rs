@@ -401,7 +401,8 @@ impl App {
         }
     }
 
-    /// Every PR the view lists (folded and filtered ones too).
+    /// Every PR whose row the view lists: not in a folded group, nor hidden by the filter.
+    /// A group unfolded or unfiltered during a visit is stamped at the next snapshot.
     fn shown_ids(&self) -> Vec<String> {
         let Some(d) = &self.data else {
             return Vec::new();
@@ -409,9 +410,11 @@ impl App {
         if self.kind == ViewKind::Workspace && self.own_checkout.is_none() {
             return Vec::new();
         }
+        let filter = self.filter.as_ref().filter(|f| !f.text.is_empty());
         d.groups
             .iter()
-            .filter(|g| self.shows(d, g))
+            .filter(|g| self.shows(d, g) && !self.folds.contains(&g.key))
+            .filter(|g| filter.is_none_or(|f| matches_filter(g, &f.text)))
             .flat_map(|g| &g.layers)
             .map(|p| p.id.clone())
             .collect()
@@ -2169,6 +2172,38 @@ mod tests {
         );
         // Baselines from the file as read, not from the stale copy in memory.
         assert_eq!(marked(&a, "14:32:26"), [412]);
+    }
+
+    /// Only rows actually listed are stamped seen: a folded group's PRs and those the
+    /// filter hides keep their marks for the next visit.
+    #[test]
+    fn folded_and_filtered_prs_are_not_stamped() {
+        let tmp = tempfile::tempdir().unwrap();
+        changed_state(tmp.path());
+        let mut a = copy(ViewKind::Mine, tmp.path(), "w4:p1", "w1", "14:32:20");
+        let docket = a.data.as_ref().unwrap().groups.iter();
+        let docket = docket
+            .filter(|g| g.repo == "heard/docket")
+            .map(|g| g.key.clone());
+        a.folds.extend(docket);
+        look(&mut a, tmp.path(), "w4", "14:32:26");
+        look(&mut a, tmp.path(), "w1", "14:33:00");
+        a.folds.clear();
+        look(&mut a, tmp.path(), "w4", "14:34:00");
+        assert_eq!(marked(&a, "14:34:00"), [412]);
+
+        let tmp = tempfile::tempdir().unwrap();
+        changed_state(tmp.path());
+        let mut a = copy(ViewKind::Mine, tmp.path(), "w4:p1", "w1", "14:32:20");
+        a.filter = Some(FilterState {
+            text: "audit".into(),
+            editing: false,
+        });
+        look(&mut a, tmp.path(), "w4", "14:32:26");
+        look(&mut a, tmp.path(), "w1", "14:33:00");
+        a.filter = None;
+        look(&mut a, tmp.path(), "w4", "14:34:00");
+        assert_eq!(marked(&a, "14:34:00"), [412]);
     }
 
     #[test]
