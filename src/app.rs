@@ -227,6 +227,8 @@ pub struct App {
     herdr_ok: bool,
     /// The last herdr snapshot failed.
     herdr_down: bool,
+    /// Failed herdr snapshots in a row; the second ends a visit.
+    herdr_misses: u32,
     /// Spinner frame, advanced once per draw.
     spin: usize,
     panes: Vec<PaneCheckout>,
@@ -309,6 +311,7 @@ impl App {
             status: None,
             herdr_ok: false,
             herdr_down: false,
+            herdr_misses: 0,
             spin: 0,
             panes: Vec::new(),
             memory: Memory::default(),
@@ -818,7 +821,8 @@ impl App {
     /// Applies a herdr snapshot (spec §8): maps panes to checkouts, remembers the PR each
     /// pane has checked out, prunes the memory and recomputes the stacks' agents. An `Err`
     /// (herdr unreachable) clears the agents and leaves the memory alone. Whether the own
-    /// pane is visible starts or ends a visit (spec §9); unreachable counts as hidden.
+    /// pane is visible starts or ends a visit (spec §9). Unreachable twice in a row counts
+    /// as hidden; a single failure leaves the visit as it is (a blip must not drop marks).
     pub fn apply_snapshot(
         &mut self,
         snap: Result<Snapshot, String>,
@@ -827,14 +831,23 @@ impl App {
         now: DateTime<Utc>,
     ) {
         let visible = match (&snap, &self.own_pane) {
-            (Ok(s), Some(own)) => s.is_visible(own),
-            _ => false,
+            (Ok(s), Some(own)) => Some(s.is_visible(own)),
+            (Ok(_), None) => Some(false),
+            (Err(_), _) => None,
+        };
+        self.herdr_misses = match visible {
+            Some(_) => 0,
+            None => self.herdr_misses.saturating_add(1),
         };
         let sel = self.selection();
         self.read_snapshot(snap, branches, state);
         self.refresh_agents();
         self.restore(sel);
-        self.set_visible(visible, now);
+        match visible {
+            Some(v) => self.set_visible(v, now),
+            None if self.herdr_misses >= 2 => self.set_visible(false, now),
+            None => {}
+        }
     }
 
     fn read_snapshot(
@@ -2037,18 +2050,37 @@ mod tests {
         assert_eq!((s.summary.changed, s.summary.since), (0, None));
     }
 
+    fn unreachable(a: &mut App, dir: &Path, t: &str) {
+        a.apply_snapshot(
+            Err("herdr not running".into()),
+            &mut crate::git::FixtureBranches::embedded(),
+            &StateDir::new(dir.to_path_buf()),
+            at(t),
+        );
+    }
+
+    /// One failed snapshot is a blip: the visit (and its marks) survives it. Two in a row
+    /// end it; a snapshot that says hidden ends it at once.
     #[test]
-    fn herdr_unreachable_ends_the_visit() {
+    fn herdr_unreachable_twice_ends_the_visit() {
         let tmp = tempfile::tempdir().unwrap();
         changed_state(tmp.path());
         let mut a = copy(ViewKind::Mine, tmp.path(), "w4:p1", "w4", "14:32:26");
         assert!(a.visit.is_some());
-        a.apply_snapshot(
-            Err("herdr not running".into()),
-            &mut crate::git::FixtureBranches::embedded(),
-            &StateDir::new(tmp.path().to_path_buf()),
-            at("14:33:00"),
-        );
+        unreachable(&mut a, tmp.path(), "14:33:00");
+        assert!(a.visit.is_some());
+        assert_eq!(marked(&a, "14:33:00"), [1284, 1287, 1291, 412]);
+        // Reachable again: the count starts over.
+        look(&mut a, tmp.path(), "w4", "14:33:02");
+        unreachable(&mut a, tmp.path(), "14:33:04");
+        assert!(a.visit.is_some());
+        unreachable(&mut a, tmp.path(), "14:33:06");
+        assert!(a.visit.is_none());
+        // A failed snapshot never starts a visit.
+        unreachable(&mut a, tmp.path(), "14:33:08");
+        assert!(a.visit.is_none());
+        look(&mut a, tmp.path(), "w4", "14:33:10");
+        look(&mut a, tmp.path(), "w1", "14:33:12");
         assert!(a.visit.is_none());
     }
 
