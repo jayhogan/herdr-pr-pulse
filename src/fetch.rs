@@ -294,16 +294,22 @@ impl Worker {
 
     fn recheck(&self, ids: &[String]) -> Result<Vec<Pr>, GhError> {
         let cache = self.load();
+        let memory: Memory = self.state.load(workspaces::FILE).unwrap_or_default();
         let targets: Vec<Target> = ids
             .iter()
             .map(|id| {
-                // Keep the behind-by comparison for PRs that came from search.
+                // Keep the behind-by comparison wherever the full fetch asks for it: PRs from
+                // search, and PRs a workspace remembers.
                 let searched = cache.authored.contains(id) || cache.assigned.contains(id);
                 let head_ref = cache
                     .prs
                     .iter()
                     .find(|p| &p.id == id && searched)
-                    .map(|p| p.head_ref.clone());
+                    .map(|p| p.head_ref.clone())
+                    .or_else(|| {
+                        let r = memory.all().into_iter().find(|r| &r.pr_id == id)?;
+                        Some(r.head_ref.clone())
+                    });
                 Target {
                     id: id.clone(),
                     head_ref,
@@ -441,6 +447,20 @@ mod tests {
         assert_eq!(until_done(&rx), vec![FetchEvent::Done(cache.clone())]);
     }
 
+    /// FakeGh's answers, with each call's variables copied out of the worker thread.
+    struct Shared(
+        FakeGh,
+        std::sync::Arc<std::sync::Mutex<Vec<(&'static str, serde_json::Value)>>>,
+    );
+    impl Gh for Shared {
+        fn graphql(&self, q: &str, v: &serde_json::Value) -> Result<String, GhError> {
+            let out = self.0.graphql(q, v);
+            let last = self.0.calls.borrow().last().cloned().expect("recorded");
+            self.1.lock().unwrap().push(last);
+            out
+        }
+    }
+
     #[test]
     fn worker_fetches_remembered_ids() {
         use crate::workspaces::{self, Memory, Remembered};
@@ -466,19 +486,6 @@ mod tests {
                 true
             })
             .unwrap();
-        /// FakeGh's answers, with each call's variables copied out of the worker thread.
-        struct Shared(
-            FakeGh,
-            std::sync::Arc<std::sync::Mutex<Vec<(&'static str, serde_json::Value)>>>,
-        );
-        impl Gh for Shared {
-            fn graphql(&self, q: &str, v: &serde_json::Value) -> Result<String, GhError> {
-                let out = self.0.graphql(q, v);
-                let last = self.0.calls.borrow().last().cloned().expect("recorded");
-                self.1.lock().unwrap().push(last);
-                out
-            }
-        }
         let log = std::sync::Arc::default();
         let gh = FakeGh::new()
             .with("search", Ok(SEARCH.into()))
@@ -809,6 +816,47 @@ mod tests {
         let (tx, rx) = spawn(Box::new(FakeGh::new()), state);
         tx.send(FetchRequest::Scheduled).unwrap();
         assert_eq!(until_done(&rx), vec![FetchEvent::Done(before)]);
+    }
+
+    /// A recheck of a PR only a workspace remembers keeps its behind-by comparison, as the
+    /// full fetch does; otherwise the merged entry loses `behind_by` and the next full fetch
+    /// records a false "behind".
+    #[test]
+    fn recheck_compares_remembered_prs() {
+        use crate::workspaces::{self, Memory, Remembered};
+        let tmp = tempfile::tempdir().unwrap();
+        let state = StateDir::new(tmp.path().to_path_buf());
+        state
+            .update(workspaces::FILE, |m: &mut Memory| {
+                m.remember(
+                    "/work/x",
+                    Remembered {
+                        repo: "heard/heard-ts".into(),
+                        number: 1270,
+                        pr_id: "PR_1270".into(),
+                        head_ref: "audit/flags".into(),
+                    },
+                );
+                true
+            })
+            .unwrap();
+        state
+            .update(CACHE, |c: &mut Cache| {
+                c.prs = crate::model::parse_detail(DETAIL).unwrap();
+                true
+            })
+            .unwrap();
+        let log = std::sync::Arc::default();
+        let gh = FakeGh::new().with("detail", Ok(DETAIL.into()));
+        let (tx, rx) = spawn(Box::new(Shared(gh, std::sync::Arc::clone(&log))), state);
+        tx.send(FetchRequest::Recheck(vec!["PR_1270".into()]))
+            .unwrap();
+        until_done(&rx);
+        let calls = log.lock().unwrap();
+        assert_eq!(
+            calls[0].1,
+            serde_json::json!({"id0": "PR_1270", "head0": "audit/flags"})
+        );
     }
 
     #[test]

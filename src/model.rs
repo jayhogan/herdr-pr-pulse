@@ -649,12 +649,18 @@ mod tests {
         let mut v: Value = serde_json::from_str(DETAIL).unwrap();
         let me = serde_json::json!({"__typename": "User", "login": "jayhogan"});
         let p1 = &mut v["data"]["p1"];
-        p1["latestReviews"]["nodes"].as_array_mut().unwrap().push(serde_json::json!(
-            {"author": me, "state": "COMMENTED", "submittedAt": "2026-10-17T14:22:00Z"}
-        ));
-        p1["reviewThreads"]["nodes"].as_array_mut().unwrap().push(serde_json::json!(
-            {"comments": {"nodes": [{"author": me}]}, "isResolved": false}
-        ));
+        p1["latestReviews"]["nodes"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!(
+                {"author": me, "state": "COMMENTED", "submittedAt": "2026-10-17T14:22:00Z"}
+            ));
+        p1["reviewThreads"]["nodes"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!(
+                {"comments": {"nodes": [{"author": me}]}, "isResolved": false}
+            ));
         v["data"]["p3"]["latestReviews"]["nodes"] = serde_json::json!([
             {"author": me, "state": "COMMENTED", "submittedAt": "2026-10-17T14:22:00Z"}
         ]);
