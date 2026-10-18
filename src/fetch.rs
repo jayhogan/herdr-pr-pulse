@@ -317,16 +317,17 @@ impl Worker {
     /// cache write failure is reported in the returned cache.
     fn save(&self, result: Result<Change, GhError>) -> Cache {
         let now = Utc::now();
-        // Still under the fetch lock: one copy records each change, once (spec §9). A
-        // failed write only loses this fetch's events.
+        // Still under the fetch lock: one copy records each change, once (spec §9). Timed
+        // now, not at the fetch's start, so a visit that stamped meanwhile still marks it.
+        // A failed write only loses this fetch's events.
         if let Ok(change) = &result {
-            let (prs, at) = match change {
-                Change::Full(c) => (&c.prs, c.fetched_at.unwrap_or(now)),
-                Change::Merge(prs) => (prs, now),
+            let prs = match change {
+                Change::Full(c) => &c.prs,
+                Change::Merge(prs) => prs,
             };
             let _ = self
                 .state
-                .update(CHANGES_FILE, |c: &mut Changes| c.observe(prs, at));
+                .update(CHANGES_FILE, |c: &mut Changes| c.observe(prs, now));
         }
         let apply = |c: &mut Cache| match &result {
             Ok(Change::Full(new)) => *c = new.clone(),
@@ -605,6 +606,41 @@ mod tests {
         assert_eq!(changed, ["PR_1284", "PR_1287", "PR_1291", "PR_412"]);
         // The recheck saw nothing new: each change recorded once.
         assert_eq!(changes.prs["PR_1287"].events.len(), 4);
+    }
+
+    /// Changes are stamped when they are saved, not when the fetch started: a visit that
+    /// stamps while a slow fetch runs must still see that fetch's changes as new.
+    #[test]
+    fn changes_are_timed_at_save() {
+        use crate::changes::{CHANGES_FILE, Changes};
+        struct Slow(FakeGh);
+        impl Gh for Slow {
+            fn graphql(&self, q: &str, v: &serde_json::Value) -> Result<String, GhError> {
+                std::thread::sleep(std::time::Duration::from_millis(30));
+                self.0.graphql(q, v)
+            }
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().to_path_buf();
+        let mut fetched_at = None;
+        for detail in [include_str!("../tests/fixtures/detail-before.json"), DETAIL] {
+            let gh = FakeGh::new()
+                .with("search", Ok(SEARCH.into()))
+                .with("detail", Ok(detail.into()));
+            let (tx, rx) = spawn(Box::new(Slow(gh)), StateDir::new(dir.clone()));
+            tx.send(FetchRequest::Forced).unwrap();
+            let FetchEvent::Done(cache) = until_done(&rx).pop().unwrap() else {
+                unreachable!()
+            };
+            fetched_at = cache.fetched_at;
+        }
+        let changes: Changes = StateDir::new(dir).load(CHANGES_FILE).unwrap();
+        let at = changes.prs["PR_1287"].changed_at.unwrap();
+        // Search, then two repos' details: at least 90 ms after the fetch started.
+        assert!(
+            at - fetched_at.unwrap() >= Duration::milliseconds(90),
+            "{at} vs {fetched_at:?}"
+        );
     }
 
     #[test]

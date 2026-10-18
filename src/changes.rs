@@ -21,6 +21,10 @@ pub struct Fingerprint {
     pub reviewers: BTreeMap<String, ReviewState>,
     pub threads: u32,
     pub merge: MergeState,
+    /// The last merge state GitHub had computed (not `Unknown`), carried across
+    /// `Unknown` fetches; merge events compare against it.
+    #[serde(default)]
+    pub known_merge: Option<MergeState>,
     pub behind: Option<u32>,
     pub head_oid: String,
     pub state: PrState,
@@ -37,6 +41,7 @@ impl Fingerprint {
                 .collect(),
             threads: pr.unresolved_threads,
             merge: pr.merge,
+            known_merge: (pr.merge != MergeState::Unknown).then_some(pr.merge),
             behind: pr.behind_by,
             head_oid: pr.head_oid.clone(),
             state: pr.state,
@@ -69,7 +74,10 @@ impl Changes {
     pub fn observe(&mut self, prs: &[Pr], now: DateTime<Utc>) -> bool {
         let mut dirty = false;
         for pr in prs {
-            let fp = Fingerprint::of(pr);
+            let mut fp = Fingerprint::of(pr);
+            if let Some(t) = self.prs.get(&pr.id) {
+                fp.known_merge = fp.known_merge.or(last_known_merge(&t.fp));
+            }
             match self.prs.get_mut(&pr.id) {
                 None => {
                     self.prs.insert(
@@ -101,17 +109,10 @@ impl Changes {
     }
 }
 
-fn is_clean(m: MergeState) -> bool {
-    matches!(
-        m,
-        MergeState::Clean | MergeState::HasHooks | MergeState::Unstable
-    )
-}
-
-/// Merge state moved into conflicts, or into clean from a non-clean state.
-fn merge_event(old: &Fingerprint, pr: &Pr) -> bool {
-    (pr.merge == MergeState::Dirty && old.merge != MergeState::Dirty)
-        || (is_clean(pr.merge) && !is_clean(old.merge))
+/// The fingerprint's last computed merge state (older files lack `known_merge`).
+fn last_known_merge(fp: &Fingerprint) -> Option<MergeState> {
+    fp.known_merge
+        .or((fp.merge != MergeState::Unknown).then_some(fp.merge))
 }
 
 /// Human-readable events for what changed between `old` and the PR now.
@@ -155,15 +156,17 @@ pub fn diff(old: &Fingerprint, pr: &Pr) -> Vec<String> {
             MergeState::Clean | MergeState::HasHooks | MergeState::Unstable
         )
     };
-    if pr.merge != old.merge {
-        if pr.merge == MergeState::Dirty {
-            out.push(format!("⚠ now conflicts with {}", pr.base_ref));
-        } else if clean(pr.merge) && !clean(old.merge) {
-            out.push("✓ merge clean".into());
-        }
+    // Against the last computed state: GitHub's `Unknown` (routine after a push) is
+    // neither a change nor a reference point.
+    let known = last_known_merge(old);
+    let moved = |to: MergeState| pr.merge == to && known.is_some_and(|k| k != to);
+    if moved(MergeState::Dirty) {
+        out.push(format!("⚠ now conflicts with {}", pr.base_ref));
+    } else if clean(pr.merge) && known.is_some_and(|k| !clean(k)) {
+        out.push("✓ merge clean".into());
     }
     if let Some(n) = pr.behind_by {
-        let into_behind = pr.merge == MergeState::Behind && old.merge != MergeState::Behind;
+        let into_behind = moved(MergeState::Behind);
         if into_behind || n > old.behind.unwrap_or(0) {
             out.push(format!("↓ behind {} by {n}", pr.base_ref));
         }
@@ -210,7 +213,8 @@ pub fn stamp(seen: &mut Seen, ids: &[String], kind: ViewKind, now: DateTime<Utc>
             ViewKind::Workspace => &mut s.ws,
             ViewKind::Mine => &mut s.mine,
         };
-        if *slot != Some(now) {
+        // Never backwards (clock skew between copies).
+        if slot.is_none_or(|t| t < now) {
             *slot = Some(now);
             dirty = true;
         }
@@ -314,6 +318,66 @@ mod tests {
             c.observe(&prs, t("2026-10-17T14:01:00Z"));
         }
         assert_eq!(c.prs[&prs[0].id].events.len(), 10);
+    }
+
+    #[test]
+    fn unknown_merge_is_not_a_change() {
+        let mut prs = parse_detail(DETAIL).unwrap();
+        prs.truncate(1);
+        let base = prs[0].base_ref.clone();
+        let mut c = Changes::default();
+        let mut step = |m: MergeState, at: &str| {
+            prs[0].merge = m;
+            c.observe(&prs, t(at));
+            c.prs[&prs[0].id]
+                .events
+                .iter()
+                .map(|e| e.text.clone())
+                .collect::<Vec<_>>()
+        };
+        step(MergeState::Clean, "2026-10-17T14:00:00Z");
+        assert!(step(MergeState::Unknown, "2026-10-17T14:01:00Z").is_empty());
+        assert!(step(MergeState::Clean, "2026-10-17T14:02:00Z").is_empty());
+        step(MergeState::Unknown, "2026-10-17T14:03:00Z");
+        assert_eq!(
+            step(MergeState::Dirty, "2026-10-17T14:04:00Z"),
+            [format!("⚠ now conflicts with {base}")]
+        );
+        // First seen as Unknown, then computed: nothing to compare against.
+        let mut c = Changes::default();
+        prs[0].merge = MergeState::Unknown;
+        c.observe(&prs, t("2026-10-17T14:00:00Z"));
+        prs[0].merge = MergeState::Clean;
+        c.observe(&prs, t("2026-10-17T14:01:00Z"));
+        assert!(c.prs[&prs[0].id].changed_at.is_none());
+    }
+
+    #[test]
+    fn fingerprint_without_known_merge_still_loads() {
+        let mut v =
+            serde_json::to_value(Fingerprint::of(&parse_detail(DETAIL).unwrap()[0])).unwrap();
+        v.as_object_mut().unwrap().remove("known_merge");
+        let fp: Fingerprint = serde_json::from_value(v).unwrap();
+        assert_eq!(fp.known_merge, None);
+    }
+
+    #[test]
+    fn stamp_never_moves_backwards() {
+        let mut seen = Seen::default();
+        let ids = vec!["a".to_string()];
+        assert!(stamp(
+            &mut seen,
+            &ids,
+            ViewKind::Mine,
+            t("2026-10-17T10:05:00Z")
+        ));
+        assert!(!stamp(
+            &mut seen,
+            &ids,
+            ViewKind::Mine,
+            t("2026-10-17T10:04:00Z")
+        ));
+        assert_eq!(seen.prs["a"].mine, Some(t("2026-10-17T10:05:00Z")));
     }
 
     #[test]

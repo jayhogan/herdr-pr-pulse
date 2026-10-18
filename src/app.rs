@@ -335,6 +335,8 @@ impl App {
         }
         let start = self.visit.is_none();
         if start {
+            // Changes another copy recorded since our last Done count from this visit on.
+            self.reload_changes();
             self.visit = Some(Visit {
                 started: now,
                 baseline: BTreeMap::new(),
@@ -365,9 +367,12 @@ impl App {
         let mut apply = |seen: &mut Seen| {
             for id in &fresh {
                 let before = seen.prs.get(id).copied().unwrap_or_default();
+                // Set once: after a failed write this runs again over the older seen
+                // times in memory, which must not replace those read from the file.
                 visit
                     .baseline
-                    .insert(id.clone(), changes::effective(before, kind));
+                    .entry(id.clone())
+                    .or_insert(changes::effective(before, kind));
             }
             changes::stamp(seen, &stamped, kind, now)
         };
@@ -384,6 +389,15 @@ impl App {
             None => {
                 apply(&mut self.seen);
             }
+        }
+    }
+
+    /// `changes.json` as the fetch workers left it (kept as is when it cannot be read).
+    fn reload_changes(&mut self) {
+        if let Some(state) = &self.state
+            && let Ok(c) = state.load(changes::CHANGES_FILE)
+        {
+            self.changes = c;
         }
     }
 
@@ -738,11 +752,7 @@ impl App {
                     }
                 }
                 // The worker recorded this fetch's changes before writing the cache.
-                if let Some(state) = &self.state
-                    && let Ok(c) = state.load(changes::CHANGES_FILE)
-                {
-                    self.changes = c;
-                }
+                self.reload_changes();
                 self.set_prs(
                     cache.prs,
                     &cache.authored,
@@ -2098,6 +2108,67 @@ mod tests {
         look(&mut a, tmp.path(), "w1", "14:37:00");
         look(&mut a, tmp.path(), "w4", "14:38:00");
         assert!(marked(&a, "14:38:00").is_empty());
+    }
+
+    /// A change in `changes.json` with this PR, recorded at `t` (as another copy's
+    /// worker would, without this copy seeing a `Done`).
+    fn record_change(state: &StateDir, number: u32, t: &str) {
+        let mut prs = model::parse_detail(include_str!("../tests/fixtures/detail.json")).unwrap();
+        let p = prs.iter_mut().find(|p| p.number == number).unwrap();
+        p.head_oid = format!("pushed-{t}");
+        state
+            .update::<crate::changes::Changes>(crate::changes::CHANGES_FILE, |c| {
+                c.observe(&prs, at(t))
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn visit_start_reads_changes_another_copy_recorded() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = changed_state(tmp.path());
+        let mut a = copy(ViewKind::Mine, tmp.path(), "w4:p1", "w1", "14:32:20");
+        record_change(&state, 1279, "14:35:00");
+        look(&mut a, tmp.path(), "w4", "14:36:00");
+        assert!(marked(&a, "14:36:00").contains(&1279));
+    }
+
+    #[test]
+    fn change_saved_after_the_visit_stamp_is_marked_next_visit() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = changed_state(tmp.path());
+        let mut a = copy(ViewKind::Mine, tmp.path(), "w4:p1", "w4", "14:33:00");
+        // Another copy's fetch (started 14:32:50) saves its change at 14:34; this copy
+        // leaves before any Done of its own.
+        record_change(&state, 1279, "14:34:00");
+        look(&mut a, tmp.path(), "w1", "14:35:00");
+        look(&mut a, tmp.path(), "w4", "14:36:00");
+        assert_eq!(marked(&a, "14:36:00"), [1279]);
+    }
+
+    #[test]
+    fn failed_seen_write_keeps_the_baselines() {
+        let tmp = tempfile::tempdir().unwrap();
+        changed_state(tmp.path());
+        let state = StateDir::new(tmp.path().to_path_buf());
+        let mut a = copy(ViewKind::Mine, tmp.path(), "w4:p1", "w1", "14:32:20");
+        // After this copy loaded seen.json, the audit workspace's copy saw its PRs.
+        let audit: Vec<String> = ["PR_1284", "PR_1287", "PR_1291"].map(String::from).into();
+        state
+            .update::<crate::changes::Seen>(crate::changes::SEEN_FILE, |s| {
+                crate::changes::stamp(s, &audit, ViewKind::Workspace, at("14:32:24"))
+            })
+            .unwrap();
+        // seen.json can be read and locked but not replaced.
+        std::fs::create_dir(tmp.path().join("seen.json.tmp")).unwrap();
+        look(&mut a, tmp.path(), "w4", "14:32:26");
+        assert!(
+            a.status
+                .as_deref()
+                .is_some_and(|s| s.starts_with("seen not saved"))
+        );
+        // Baselines from the file as read, not from the stale copy in memory.
+        assert_eq!(marked(&a, "14:32:26"), [412]);
     }
 
     #[test]
