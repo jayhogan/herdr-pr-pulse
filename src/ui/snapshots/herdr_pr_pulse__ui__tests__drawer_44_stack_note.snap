@@ -9,7 +9,8 @@ expression: region
  │  ├ Reviews ──────────────────────────────
  │  │ ✓ @kayla   approved
  │  ├ Merge ────────────────────────────────
- │  │ ✓ ready to merge as a stack (1 of 4)
+ │  │ ✓ ready to merge · the stack can merge
+ │  │ through layer 1 of 4
  │  │ GitHub marks this PR blocked on its
  │  │ own; rules are checked when the stack
  │  │ merges

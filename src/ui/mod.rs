@@ -639,7 +639,12 @@ mod tests {
         a.move_cursor(1);
         a.handle_key(key(' '));
         let t = text(&draw(&a, 120, 40));
-        assert!(t.contains("✓ ready to merge as a stack (1 of 4)"), "{t}");
+        // Only layer 1 of 4 is ready: say how far the stack can merge, not "as a stack".
+        assert!(
+            t.contains("✓ ready to merge · the stack can merge through layer 1 of 4"),
+            "{t}"
+        );
+        assert!(!t.contains("as a stack"), "{t}");
         assert!(
             t.contains(
                 "GitHub marks this PR blocked on its own; rules are checked when the stack merges"
@@ -667,7 +672,7 @@ mod tests {
             };
             let all = flat(&t);
             for want in [
-                "ready to merge as a stack (1 of 4)",
+                "ready to merge · the stack can merge through layer 1 of 4",
                 "GitHub marks this PR blocked on its own; rules are checked when the stack merges",
             ] {
                 assert!(all.contains(want), "{width}: {want}\n{t}");
@@ -707,6 +712,21 @@ mod tests {
             let t = text(&draw(&whole_stack_ready_app(), width, 30));
             assert!(t.contains(header), "{width}:\n{t}");
         }
+    }
+
+    #[test]
+    fn whole_ready_stack_drawer_says_as_a_stack() {
+        let mut a = whole_stack_ready_app();
+        // A fully ready stack sorts below the others: find #1284's row (␣ on a header is a no-op).
+        while a.screen(now()).drawer_pr.is_none() {
+            a.move_cursor(1);
+            if a.selected_pr().is_some_and(|p| p.number == 1284) {
+                a.handle_key(key(' '));
+            }
+        }
+        assert_eq!(a.screen(now()).drawer_pr.as_deref(), Some("PR_1284"));
+        let t = text(&draw(&a, 120, 40));
+        assert!(t.contains("✓ ready to merge as a stack (4 of 4)"), "{t}");
     }
 
     #[test]

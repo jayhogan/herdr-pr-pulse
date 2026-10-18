@@ -186,8 +186,11 @@ Per open PR, highest wins:
 only non-required checks fail); `BLOCKED` → ⊘ blocked; `BEHIND` → ↓ n; `DIRTY` → ⚠ conflicts;
 `UNKNOWN` → ? computing; `DRAFT` → shown via ◌ state, merge column from the other fields. For ◆,
 `CLEAN`/`HAS_HOOKS`/`UNSTABLE` all qualify. A ◆ native-stack bottom layer that GitHub reports
-BLOCKED shows `✓ stack ok` in the merge column, and its drawer says "ready to merge as a stack
-(k of N)" with a dim note that GitHub marks the PR blocked on its own.
+BLOCKED shows `✓ stack ok` in the merge column. Its drawer says "ready to merge as a stack
+(N of N)" when every layer is ready, or "ready to merge · the stack can merge through layer k
+of N" when only some are, with a dim note that GitHub marks the PR blocked on its own. The
+stack header reads "◆ merge stack · N of N" only when the whole stack is ready; a partly ready
+stack keeps "mergeable through layer k of N".
 
 Agent state and ▲▲ apply in both views (Mine uses herdr data from all workspaces). When herdr is
 unreachable, agent state is unknown and ▲▲ cannot fire; rows fall back to ▲.
