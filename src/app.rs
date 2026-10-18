@@ -7,7 +7,8 @@ use chrono::{DateTime, FixedOffset, Utc};
 use crate::attention::{
     AgentState, Attention, Counts, Reason, count, first_blocker, level, mergeable_through,
 };
-use crate::model::{Pr, PrState};
+use crate::fetch::{FetchEvent, RepoStatus};
+use crate::model::{MergeState, Pr, PrState};
 use crate::stacks::{self, Group, GroupKind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,11 +32,16 @@ pub enum SortOrder {
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
-pub struct LoadProgress;
+pub struct LoadProgress {
+    pub repos: Vec<(String, RepoStatus)>,
+}
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct EmptyInfo;
 #[derive(Debug, Clone, PartialEq, Default)]
-pub struct Banner;
+pub struct Banner {
+    pub message: String,
+    pub fix: String,
+}
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct FilterState;
 
@@ -139,6 +145,11 @@ pub struct App {
     folds: BTreeSet<String>,
     agents: BTreeMap<String, AgentState>,
     data: Option<Data>,
+    fetching: bool,
+    /// The last fetch failed; rows (if any) are from an earlier one.
+    stale: bool,
+    banner: Option<Banner>,
+    progress: LoadProgress,
 }
 
 impl Scope {
@@ -172,6 +183,10 @@ impl App {
             folds: BTreeSet::new(),
             agents: BTreeMap::new(),
             data: None,
+            fetching: false,
+            stale: false,
+            banner: None,
+            progress: LoadProgress::default(),
         }
     }
 
@@ -190,6 +205,50 @@ impl App {
             viewer: viewer.to_string(),
             fetched_at,
         });
+    }
+
+    pub fn apply_fetch(&mut self, ev: FetchEvent, now: DateTime<Utc>) {
+        match ev {
+            FetchEvent::Started => self.fetching = true,
+            FetchEvent::Progress(repos) => self.progress = LoadProgress { repos },
+            FetchEvent::Done(cache) => {
+                self.fetching = false;
+                if let Some(e) = &cache.error {
+                    // Keep the rows we have; with none yet, show the last good fetch if any.
+                    self.stale = true;
+                    self.banner = Some(Banner {
+                        message: e.message(),
+                        fix: e.fix(),
+                    });
+                    if self.data.is_some() || cache.fetched_at.is_none() {
+                        return;
+                    }
+                } else {
+                    self.stale = false;
+                    self.banner = None;
+                }
+                self.set_prs(
+                    cache.prs,
+                    &cache.authored,
+                    &cache.assigned,
+                    &cache.viewer,
+                    cache.fetched_at.unwrap_or(now),
+                );
+            }
+        }
+    }
+
+    /// Open PRs whose merge state GitHub had not computed yet.
+    pub fn unknown_merge_ids(&self) -> Vec<String> {
+        let Some(d) = &self.data else {
+            return Vec::new();
+        };
+        d.groups
+            .iter()
+            .flat_map(|g| &g.layers)
+            .filter(|p| p.state == PrState::Open && p.merge == MergeState::Unknown)
+            .map(|p| p.id.clone())
+            .collect()
     }
 
     pub fn cycle_scope(&mut self) {
@@ -290,13 +349,13 @@ impl App {
             repos: 0,
             sort: self.sort,
             fetched_at: None,
-            fetching: false,
-            stale: false,
+            fetching: self.fetching,
+            stale: self.stale,
             branch: None,
         };
         let mut counts = Counts::default();
         let body = match &self.data {
-            None => Body::Loading(LoadProgress),
+            None => Body::Loading(self.progress.clone()),
             Some(d) => {
                 header.fetched_at = Some(d.fetched_at);
                 let mut shown: Vec<(GroupView, DateTime<Utc>)> = d
@@ -348,7 +407,7 @@ impl App {
                 changed: 0,
                 since: None,
             },
-            banner: None,
+            banner: self.banner.clone(),
             body,
             cursor: self.cursor.min(selectable.saturating_sub(1)),
             drawer_open: false,
@@ -398,6 +457,110 @@ mod tests {
             .find(|g| g.name == "audit")
             .unwrap()
             .key
+    }
+
+    fn good_cache() -> crate::store::Cache {
+        let s = model::parse_search(include_str!("../tests/fixtures/search.json")).unwrap();
+        let ids = |h: &[model::SearchHit]| h.iter().map(|x| x.id.clone()).collect::<Vec<_>>();
+        crate::store::Cache {
+            version: 1,
+            fetched_at: Some("2026-10-17T14:32:08Z".parse().unwrap()),
+            viewer: s.viewer.clone(),
+            authored: ids(&s.authored),
+            assigned: ids(&s.assigned),
+            prs: model::parse_detail(include_str!("../tests/fixtures/detail.json")).unwrap(),
+            error: None,
+            error_at: None,
+        }
+    }
+
+    #[test]
+    fn apply_fetch_keeps_rows_on_error() {
+        let mut a = App::new(ViewKind::Mine, FixedOffset::east_opt(0).unwrap());
+        a.apply_fetch(FetchEvent::Done(good_cache()), now());
+        let s = a.screen(now());
+        assert!(!s.header.stale);
+        assert_eq!(s.banner, None);
+        let Body::Groups(before) = s.body else {
+            panic!()
+        };
+
+        a.apply_fetch(FetchEvent::Started, now());
+        assert!(a.screen(now()).header.fetching);
+        let bad = crate::store::Cache {
+            prs: Vec::new(),
+            error: Some(crate::github::GhError::LoginExpired),
+            error_at: Some(now()),
+            ..good_cache()
+        };
+        a.apply_fetch(FetchEvent::Done(bad), now());
+        let s = a.screen(now());
+        assert!(s.header.stale);
+        assert!(!s.header.fetching);
+        assert_eq!(
+            s.banner,
+            Some(Banner {
+                message: "GitHub login expired".into(),
+                fix: "Run `gh auth login` in any pane, then press r.".into(),
+            })
+        );
+        assert_eq!(s.body, Body::Groups(before));
+
+        // The next good fetch clears the error.
+        a.apply_fetch(FetchEvent::Done(good_cache()), now());
+        let s = a.screen(now());
+        assert!(!s.header.stale);
+        assert_eq!(s.banner, None);
+    }
+
+    #[test]
+    fn progress_shows_only_before_data() {
+        let mut a = App::new(ViewKind::Mine, FixedOffset::east_opt(0).unwrap());
+        let repos = vec![("heard/docket".to_string(), RepoStatus::Loading)];
+        a.apply_fetch(FetchEvent::Progress(repos.clone()), now());
+        assert_eq!(
+            a.screen(now()).body,
+            Body::Loading(LoadProgress {
+                repos: repos.clone()
+            })
+        );
+        a.apply_fetch(FetchEvent::Done(good_cache()), now());
+        a.apply_fetch(FetchEvent::Progress(repos), now());
+        assert!(matches!(a.screen(now()).body, Body::Groups(_)));
+    }
+
+    #[test]
+    fn error_before_any_data_still_loading_with_banner() {
+        let mut a = App::new(ViewKind::Mine, FixedOffset::east_opt(0).unwrap());
+        let bad = crate::store::Cache {
+            error: Some(crate::github::GhError::NotInstalled),
+            ..Default::default()
+        };
+        a.apply_fetch(FetchEvent::Done(bad), now());
+        let s = a.screen(now());
+        assert!(matches!(s.body, Body::Loading(_)));
+        assert!(s.header.stale);
+        assert_eq!(s.banner.unwrap().message, "gh not found");
+    }
+
+    #[test]
+    fn unknown_merge_ids_lists_open_unknown() {
+        let mut cache = good_cache();
+        for p in &mut cache.prs {
+            p.merge = model::MergeState::Clean;
+        }
+        cache.prs[0].merge = model::MergeState::Unknown;
+        let first = cache.prs[0].id.clone();
+        let merged = cache
+            .prs
+            .iter_mut()
+            .find(|p| p.state != PrState::Open)
+            .unwrap();
+        merged.merge = model::MergeState::Unknown;
+        let mut a = App::new(ViewKind::Mine, FixedOffset::east_opt(0).unwrap());
+        assert!(a.unknown_merge_ids().is_empty());
+        a.apply_fetch(FetchEvent::Done(cache), now());
+        assert_eq!(a.unknown_merge_ids(), vec![first]);
     }
 
     #[test]

@@ -47,6 +47,11 @@ fn header_bar(h: &Header, screen: &Screen, d: Density, width: usize) -> Line<'st
     let spin = if h.fetching { "⠹" } else { "↻" };
     let age = h.fetched_at.map(|t| ago::short(t, screen.now));
     let right = match (d, age) {
+        // Minimal stale marker; Task 18 draws the full error states.
+        (Wide | Medium, Some(age)) if h.stale => format!("sort: {sort} ▾ │ ✗ stale {age} "),
+        (_, Some(age)) if h.stale => format!("✗ stale {age} "),
+        (Wide | Medium, None) if h.stale => format!("sort: {sort} ▾ │ ✗ stale "),
+        (_, None) if h.stale => "✗ stale ".into(),
         (Wide, Some(age)) => {
             let at = h.fetched_at.unwrap().with_timezone(&screen.clock);
             format!(

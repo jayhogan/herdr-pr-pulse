@@ -96,6 +96,44 @@ mod tests {
     }
 
     #[test]
+    fn stale_header_and_banner_are_visible() {
+        use crate::fetch::FetchEvent;
+        use crate::store::Cache;
+        let mut a = app();
+        let cache = Cache {
+            error: Some(crate::github::GhError::LoginExpired),
+            ..Default::default()
+        };
+        a.apply_fetch(FetchEvent::Done(cache), now());
+        for width in [120, 80, 44, 34] {
+            let buf = draw(&a, width, 30);
+            let lines = text_lines(&buf);
+            assert!(lines[0].contains("✗ stale"), "{width}: {}", lines[0]);
+            assert!(text(&buf).contains("✗ GitHub login expired"), "{width}");
+            assert!(text(&buf).contains("#1287"), "{width}: rows kept");
+        }
+    }
+
+    #[test]
+    fn loading_lists_repos() {
+        use crate::fetch::{FetchEvent, RepoStatus};
+        let mut a = App::new(ViewKind::Mine, FixedOffset::east_opt(0).unwrap());
+        assert!(text(&draw(&a, 80, 10)).contains("⠹ loading…"));
+        a.apply_fetch(
+            FetchEvent::Progress(vec![
+                ("heard/docket".into(), RepoStatus::Done(2)),
+                ("heard/heard-ts".into(), RepoStatus::Loading),
+                ("heard/web".into(), RepoStatus::Queued),
+            ]),
+            now(),
+        );
+        let t = text(&draw(&a, 80, 10));
+        assert!(t.contains("✓ heard/docket"), "{t}");
+        assert!(t.contains("⠹ heard/heard-ts"), "{t}");
+        assert!(t.contains("· heard/web"), "{t}");
+    }
+
+    #[test]
     fn mine_120() {
         insta::assert_snapshot!(text(&draw(&app(), 120, 30)));
     }

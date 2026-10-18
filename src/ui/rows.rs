@@ -11,6 +11,7 @@ use ratatui::widgets::Paragraph;
 
 use crate::app::{Body, GroupView, RowView, Screen};
 use crate::attention::{Attention, Reason, reasons};
+use crate::fetch::RepoStatus;
 use crate::stacks::GroupKind;
 use crate::ui::cells::{
     cell, ci, dw, first_class, merge, pick, plural, reason_style, reason_words, review, threads,
@@ -95,9 +96,23 @@ fn body_lines(screen: &Screen, width: u16) -> (Vec<Line<'static>>, usize, usize)
     let width = width as usize;
     let mut out = Vec::new();
     let (mut cursor_line, mut cursor_end) = (0, 0);
+    if let Some(b) = &screen.banner {
+        let t = format!("  ✗ {}. {}", b.message, b.fix);
+        out.push(Line::styled(fit(&t, width), theme::red()));
+    }
     let groups = match &screen.body {
-        Body::Loading(_) => {
-            out.push(Line::styled(fit("  ⠹ loading…", width), theme::dim()));
+        Body::Loading(p) => {
+            if p.repos.is_empty() {
+                out.push(Line::styled(fit("  ⠹ loading…", width), theme::dim()));
+            }
+            for (repo, status) in &p.repos {
+                let t = match status {
+                    RepoStatus::Done(n) => format!("  ✓ {repo}  {}", plural(*n, "PR", "PRs")),
+                    RepoStatus::Loading => format!("  ⠹ {repo}"),
+                    RepoStatus::Queued => format!("  · {repo}"),
+                };
+                out.push(Line::styled(fit(&t, width), theme::dim()));
+            }
             return (out, 0, 0);
         }
         Body::Empty(_) => {

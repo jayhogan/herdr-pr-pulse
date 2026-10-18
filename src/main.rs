@@ -3,6 +3,7 @@
 mod ago;
 mod app;
 mod attention;
+mod fetch;
 mod github;
 mod model;
 mod stacks;
@@ -12,13 +13,17 @@ mod ui;
 use std::env;
 use std::io;
 use std::process::ExitCode;
-use std::time::Duration;
+use std::sync::mpsc::{Receiver, Sender};
+use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Local, Offset, Utc};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::DefaultTerminal;
 
 use crate::app::{App, ViewKind};
+use crate::fetch::{FetchEvent, FetchRequest, Poller};
+use crate::github::GhCli;
+use crate::store::StateDir;
 
 const USAGE: &str = "usage: herdr-pr-pulse [workspace|mine] [--fixtures]";
 const TICK: Duration = Duration::from_secs(1);
@@ -83,11 +88,14 @@ fn run(args: &Args) -> Result<(), String> {
         }
     }
     let mut app = App::new(args.kind, Local::now().offset().fix());
-    if args.fixtures {
+    let mut live = if args.fixtures {
         load_fixtures(&mut app)?;
-    }
+        None
+    } else {
+        Some(Live::start())
+    };
     let mut terminal = ratatui::init();
-    let result = event_loop(&mut terminal, &mut app);
+    let result = event_loop(&mut terminal, &mut app, live.as_mut());
     ratatui::restore();
     result.map_err(|e| e.to_string())
 }
@@ -109,6 +117,42 @@ fn load_fixtures(app: &mut App) -> Result<(), String> {
     Ok(())
 }
 
+/// The background GitHub fetch and when to ask it for data. Fixtures mode has none.
+struct Live {
+    requests: Sender<FetchRequest>,
+    events: Receiver<FetchEvent>,
+    poller: Poller,
+}
+
+impl Live {
+    fn start() -> Live {
+        let (requests, events) = fetch::spawn(Box::new(GhCli), StateDir::default_location());
+        Live {
+            requests,
+            events,
+            poller: Poller::new(Instant::now()),
+        }
+    }
+
+    /// Sends due requests and applies every event that has arrived.
+    fn tick(&mut self, app: &mut App) {
+        for req in self.poller.due(Instant::now()) {
+            let _ = self.requests.send(req); // a dead worker leaves the last data on screen
+        }
+        while let Ok(ev) = self.events.try_recv() {
+            let done = matches!(ev, FetchEvent::Done(_));
+            app.apply_fetch(ev, Utc::now());
+            if done {
+                self.poller.on_done(Instant::now(), app.unknown_merge_ids());
+            }
+        }
+    }
+
+    fn refresh(&mut self) {
+        let _ = self.requests.send(self.poller.forced());
+    }
+}
+
 /// Returns true when the app should quit. Task 14 moves this into `App::handle_key`.
 fn handle_key(app: &mut App, code: KeyCode, modifiers: KeyModifiers) -> bool {
     match code {
@@ -121,9 +165,16 @@ fn handle_key(app: &mut App, code: KeyCode, modifiers: KeyModifiers) -> bool {
     false
 }
 
-fn event_loop(terminal: &mut DefaultTerminal, app: &mut App) -> io::Result<()> {
+fn event_loop(
+    terminal: &mut DefaultTerminal,
+    app: &mut App,
+    mut live: Option<&mut Live>,
+) -> io::Result<()> {
     let mut scroll = 0;
     loop {
+        if let Some(live) = live.as_deref_mut() {
+            live.tick(app);
+        }
         let screen = app.screen(Utc::now());
         terminal.draw(|frame| ui::rows::render(frame, &screen, &mut scroll))?;
 
@@ -131,9 +182,15 @@ fn event_loop(terminal: &mut DefaultTerminal, app: &mut App) -> io::Result<()> {
         if event::poll(TICK)?
             && let Event::Key(key) = event::read()?
             && key.kind == KeyEventKind::Press
-            && handle_key(app, key.code, key.modifiers)
         {
-            return Ok(());
+            if key.code == KeyCode::Char('r')
+                && let Some(live) = live.as_deref_mut()
+            {
+                live.refresh();
+            }
+            if handle_key(app, key.code, key.modifiers) {
+                return Ok(());
+            }
         }
     }
 }
