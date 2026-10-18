@@ -6,6 +6,7 @@ mod attention;
 mod github;
 mod model;
 mod stacks;
+mod store;
 mod ui;
 
 use std::env;
