@@ -10,7 +10,7 @@ use chrono::{DateTime, Duration, Utc};
 
 use crate::changes::{CHANGES_FILE, Changes};
 use crate::github::{self, Gh, GhError, Target};
-use crate::model::Pr;
+use crate::model::{Pr, PrState};
 use crate::store::{Cache, StateDir};
 use crate::workspaces::{self, Memory};
 
@@ -60,6 +60,17 @@ pub fn decide(req: &FetchRequest, cache_age: Option<Duration>, have_lock: bool) 
             _ => Plan::WaitForOther,
         },
     }
+}
+
+/// The head ref to compare against the base, unless `cache` saw the PR merged or closed:
+/// behind-by means nothing for those, and GitHub fails the comparison once the branch is
+/// deleted (it usually is, on merge).
+fn compare_ref(cache: &Cache, id: &str, head: &str) -> Option<String> {
+    let done = cache
+        .prs
+        .iter()
+        .any(|p| p.id == id && p.state != PrState::Open);
+    (!done).then(|| head.to_string())
 }
 
 /// `detail` in requests of at most `DETAIL_CHUNK` targets.
@@ -247,11 +258,12 @@ impl Worker {
         }
         // PRs any workspace remembers (spec §8), even merged or closed ones.
         let memory: Memory = self.state.load(workspaces::FILE).unwrap_or_default();
+        let last = self.load();
         for r in memory.all() {
             if seen.insert(r.pr_id.clone()) {
                 by_repo.entry(r.repo.clone()).or_default().push(Target {
                     id: r.pr_id.clone(),
-                    head_ref: Some(r.head_ref.clone()),
+                    head_ref: compare_ref(&last, &r.pr_id, &r.head_ref),
                 });
             }
         }
@@ -309,7 +321,8 @@ impl Worker {
                     .or_else(|| {
                         let r = memory.all().into_iter().find(|r| &r.pr_id == id)?;
                         Some(r.head_ref.clone())
-                    });
+                    })
+                    .and_then(|head| compare_ref(&cache, id, &head));
                 Target {
                     id: id.clone(),
                     head_ref,
@@ -828,15 +841,17 @@ mod tests {
         let state = StateDir::new(tmp.path().to_path_buf());
         state
             .update(workspaces::FILE, |m: &mut Memory| {
-                m.remember(
-                    "/work/x",
-                    Remembered {
-                        repo: "heard/heard-ts".into(),
-                        number: 1270,
-                        pr_id: "PR_1270".into(),
-                        head_ref: "audit/flags".into(),
-                    },
-                );
+                for (n, head) in [(1287, "audit/kafka-producer"), (1270, "audit/flags")] {
+                    m.remember(
+                        "/work/x",
+                        Remembered {
+                            repo: "heard/heard-ts".into(),
+                            number: n,
+                            pr_id: format!("PR_{n}"),
+                            head_ref: head.into(),
+                        },
+                    );
+                }
                 true
             })
             .unwrap();
@@ -849,13 +864,69 @@ mod tests {
         let log = std::sync::Arc::default();
         let gh = FakeGh::new().with("detail", Ok(DETAIL.into()));
         let (tx, rx) = spawn(Box::new(Shared(gh, std::sync::Arc::clone(&log))), state);
-        tx.send(FetchRequest::Recheck(vec!["PR_1270".into()]))
-            .unwrap();
+        tx.send(FetchRequest::Recheck(vec![
+            "PR_1287".into(),
+            "PR_1270".into(),
+        ]))
+        .unwrap();
         until_done(&rx);
         let calls = log.lock().unwrap();
+        // The open PR keeps its comparison; merged #1270's branch may be gone, so it has none.
         assert_eq!(
             calls[0].1,
-            serde_json::json!({"id0": "PR_1270", "head0": "audit/flags"})
+            serde_json::json!({"id0": "PR_1287", "head0": "audit/kafka-producer", "id1": "PR_1270"})
+        );
+    }
+
+    #[test]
+    fn merged_prs_skip_the_behind_comparison() {
+        use crate::workspaces::{self, Memory, Remembered};
+        let tmp = tempfile::tempdir().unwrap();
+        let state = StateDir::new(tmp.path().to_path_buf());
+        state
+            .update(workspaces::FILE, |m: &mut Memory| {
+                m.remember(
+                    "/work/x",
+                    Remembered {
+                        repo: "heard/heard-ts".into(),
+                        number: 1270,
+                        pr_id: "PR_1270".into(),
+                        head_ref: "audit/flags".into(),
+                    },
+                );
+                true
+            })
+            .unwrap();
+        // The last fetch saw #1270 merged.
+        state
+            .update(CACHE, |c: &mut Cache| {
+                c.prs = crate::model::parse_detail(DETAIL).unwrap();
+                true
+            })
+            .unwrap();
+        let log = std::sync::Arc::default();
+        let gh = FakeGh::new()
+            .with("search", Ok(SEARCH.into()))
+            .with("detail", Ok(DETAIL.into()));
+        let (tx, rx) = spawn(Box::new(Shared(gh, std::sync::Arc::clone(&log))), state);
+        tx.send(FetchRequest::Forced).unwrap();
+        until_done(&rx);
+        let calls = log.lock().unwrap();
+        let head_for = |id: &str| {
+            calls
+                .iter()
+                .filter(|(k, _)| *k == "detail")
+                .find_map(|(_, v)| {
+                    let o = v.as_object().unwrap();
+                    let (key, _) = o.iter().find(|(_, val)| val.as_str() == Some(id))?;
+                    let n = key.strip_prefix("id").unwrap();
+                    Some(o.get(&format!("head{n}")).cloned())
+                })
+        };
+        assert_eq!(head_for("PR_1270"), Some(None));
+        assert_eq!(
+            head_for("PR_1287"),
+            Some(Some(serde_json::json!("audit/kafka-producer")))
         );
     }
 
