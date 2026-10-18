@@ -11,10 +11,12 @@ mod model;
 mod stacks;
 mod store;
 mod ui;
+mod workspaces;
 
 use std::env;
 use std::io;
 use std::process::ExitCode;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
 use std::time::{Duration, Instant};
 
@@ -24,14 +26,18 @@ use ratatui::DefaultTerminal;
 
 use crate::app::{App, ViewKind};
 use crate::fetch::{FetchEvent, FetchRequest, Poller};
+use crate::git::{FixtureBranches, GitBranches};
 use crate::github::GhCli;
 use crate::store::StateDir;
 
 const USAGE: &str = "usage: herdr-pr-pulse [workspace|mine] [--fixtures]";
 const TICK: Duration = Duration::from_secs(1);
+const SNAPSHOT_EVERY: Duration = Duration::from_secs(2);
 
 const SEARCH: &str = include_str!("../tests/fixtures/search.json");
 const DETAIL: &str = include_str!("../tests/fixtures/detail.json");
+const SNAPSHOT: &str = include_str!("../tests/fixtures/snapshot.json");
+const WORKSPACES: &str = include_str!("../tests/fixtures/workspaces.json");
 const FIXTURE_FETCHED_AT: &str = "2026-10-17T14:32:08Z";
 
 #[derive(Debug, PartialEq)]
@@ -82,18 +88,17 @@ fn main() -> ExitCode {
 }
 
 fn run(args: &Args) -> Result<(), String> {
-    if !args.fixtures {
-        let in_herdr = env::var("HERDR_ENV").is_ok_and(|v| v == "1");
-        let pane = env::var("HERDR_PANE_ID").ok().filter(|p| !p.is_empty());
-        if !in_herdr || pane.is_none() {
-            return Err("not running inside a herdr pane".into());
-        }
-    }
     let mut app = App::new(args.kind, Local::now().offset().fix());
     let mut live = if args.fixtures {
         load_fixtures(&mut app)?;
         None
     } else {
+        let in_herdr = env::var("HERDR_ENV").is_ok_and(|v| v == "1");
+        let pane = env::var("HERDR_PANE_ID").ok().filter(|p| !p.is_empty());
+        let (true, Some(pane)) = (in_herdr, pane) else {
+            return Err("not running inside a herdr pane".into());
+        };
+        app.set_own_pane(pane);
         Some(Live::start())
     };
     let mut terminal = ratatui::init();
@@ -116,14 +121,46 @@ fn load_fixtures(app: &mut App) -> Result<(), String> {
         &search.viewer,
         fetched_at,
     );
+
+    // Agents from the fixture snapshot, as seen from the pane each view lives in. Memory
+    // starts from the fixture file in a throwaway dir, never the real state dir.
+    app.set_own_pane(match app.kind() {
+        ViewKind::Workspace => "w1:p2".into(),
+        ViewKind::Mine => "w4:p1".into(),
+    });
+    app.set_path_exists(|_| true);
+    // Unique per call: tests load fixtures concurrently within one process.
+    static LOADS: AtomicUsize = AtomicUsize::new(0);
+    let n = LOADS.fetch_add(1, Ordering::Relaxed);
+    let dir = env::temp_dir().join(format!(
+        "herdr-pr-pulse-fixtures-{}-{n}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let seeded = std::fs::write(dir.join(workspaces::FILE), WORKSPACES);
+    if let Err(e) = seeded {
+        let _ = std::fs::remove_dir_all(&dir);
+        return Err(format!("{}: {e}", dir.display()));
+    }
+    app.apply_snapshot(
+        herdr::parse_snapshot(SNAPSHOT),
+        &mut FixtureBranches::embedded(),
+        &StateDir::new(dir.clone()),
+        fetched_at,
+    );
+    let _ = std::fs::remove_dir_all(&dir); // the app keeps what it loaded
     Ok(())
 }
 
-/// The background GitHub fetch and when to ask it for data. Fixtures mode has none.
+/// The background GitHub fetch, the herdr snapshot poll, and when to ask each for data.
+/// Fixtures mode has none.
 struct Live {
     requests: Sender<FetchRequest>,
     events: Receiver<FetchEvent>,
     poller: Poller,
+    state: StateDir,
+    branches: GitBranches,
+    next_snapshot: Instant,
 }
 
 impl Live {
@@ -133,11 +170,19 @@ impl Live {
             requests,
             events,
             poller: Poller::new(Instant::now()),
+            state: StateDir::default_location(),
+            branches: GitBranches::default(),
+            next_snapshot: Instant::now(),
         }
     }
 
-    /// Sends due requests and applies every event that has arrived.
+    /// Reads herdr every 2 s, sends due requests and applies every event that has arrived.
     fn tick(&mut self, app: &mut App) {
+        if Instant::now() >= self.next_snapshot {
+            let snap = herdr::fetch_snapshot();
+            app.apply_snapshot(snap, &mut self.branches, &self.state, Utc::now());
+            self.next_snapshot = Instant::now() + SNAPSHOT_EVERY;
+        }
         for req in self.poller.due(Instant::now()) {
             let _ = self.requests.send(req); // a dead worker leaves the last data on screen
         }
@@ -257,7 +302,20 @@ mod tests {
         let now = DateTime::parse_from_rfc3339("2026-10-17T14:32:26Z")
             .unwrap()
             .with_timezone(&Utc);
-        assert!(matches!(app.screen(now).body, app::Body::Groups(_)));
+        let app::Body::Groups(gs) = app.screen(now).body else {
+            panic!("expected groups")
+        };
+        let audit = gs.iter().find(|g| g.name == "audit").unwrap();
+        assert_eq!(audit.agent.as_ref().unwrap().pane_id, "w1:p1");
+        assert_eq!(audit.rank, attention::Attention::Urgent);
+        assert_eq!(app.screen(now).header.branch, None);
+
+        let mut ws = App::new(ViewKind::Workspace, Utc::now().offset().fix());
+        load_fixtures(&mut ws).unwrap();
+        assert_eq!(
+            ws.screen(now).header.branch.as_deref(),
+            Some("audit/kafka-producer")
+        );
     }
 
     #[test]

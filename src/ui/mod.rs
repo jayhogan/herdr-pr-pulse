@@ -5,8 +5,6 @@ pub mod theme;
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
-
     use chrono::{DateTime, FixedOffset, Utc};
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
@@ -15,9 +13,9 @@ mod tests {
     use ratatui::text::Span;
 
     use super::rows;
-    use crate::app::{App, Body, ViewKind};
-    use crate::attention::AgentState;
+    use crate::app::{App, ViewKind};
     use crate::model;
+    use crate::store::StateDir;
 
     fn now() -> DateTime<Utc> {
         "2026-10-17T14:32:26Z".parse().unwrap()
@@ -37,11 +35,17 @@ mod tests {
             &s.viewer,
             "2026-10-17T14:32:08Z".parse().unwrap(),
         );
-        let Body::Groups(gs) = a.screen(now()).body else {
-            panic!("expected groups")
-        };
-        let audit = gs.iter().find(|g| g.name == "audit").unwrap().key.clone();
-        a.set_agents_for_test(BTreeMap::from([(audit, AgentState::Idle)]));
+        // Agents come from the fixture snapshot, seen from the Mine copy's pane (w4:p1).
+        let tmp = tempfile::tempdir().unwrap();
+        a.set_own_pane("w4:p1".into());
+        a.set_path_exists(|_| true);
+        let snap = crate::herdr::parse_snapshot(include_str!("../../tests/fixtures/snapshot.json"));
+        a.apply_snapshot(
+            snap,
+            &mut crate::git::FixtureBranches::embedded(),
+            &StateDir::new(tmp.path().to_path_buf()),
+            now(),
+        );
         a
     }
 

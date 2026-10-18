@@ -11,6 +11,7 @@ use chrono::{DateTime, Duration, Utc};
 use crate::github::{self, Gh, GhError, Target};
 use crate::model::Pr;
 use crate::store::{Cache, StateDir};
+use crate::workspaces::{self, Memory};
 
 const CACHE: &str = "cache.json";
 const CACHE_VERSION: u32 = 1;
@@ -224,7 +225,8 @@ impl Worker {
         }
     }
 
-    /// Steps 1-3 of spec §5. The outer error means the UI is gone (nothing is saved).
+    /// Steps 1-3 of spec §5; step 2 also covers every PR in `workspaces.json`. The outer
+    /// error means the UI is gone (nothing is saved).
     fn fetch_all(&self) -> Result<Result<Change, GhError>, Gone> {
         let started = Utc::now();
         let search = match github::search(self.gh.as_ref()) {
@@ -238,6 +240,16 @@ impl Worker {
                 by_repo.entry(hit.repo.clone()).or_default().push(Target {
                     id: hit.id.clone(),
                     head_ref: Some(hit.head_ref.clone()),
+                });
+            }
+        }
+        // PRs any workspace remembers (spec §8), even merged or closed ones.
+        let memory: Memory = self.state.load(workspaces::FILE).unwrap_or_default();
+        for r in memory.all() {
+            if seen.insert(r.pr_id.clone()) {
+                by_repo.entry(r.repo.clone()).or_default().push(Target {
+                    id: r.pr_id.clone(),
+                    head_ref: Some(r.head_ref.clone()),
                 });
             }
         }
@@ -412,6 +424,88 @@ mod tests {
         // A second Scheduled request within 60 s is served from the cache.
         tx.send(FetchRequest::Scheduled).unwrap();
         assert_eq!(until_done(&rx), vec![FetchEvent::Done(cache.clone())]);
+    }
+
+    #[test]
+    fn worker_fetches_remembered_ids() {
+        use crate::workspaces::{self, Memory, Remembered};
+        let tmp = tempfile::tempdir().unwrap();
+        let state = StateDir::new(tmp.path().to_path_buf());
+        state
+            .update(workspaces::FILE, |m: &mut Memory| {
+                for (repo, n, head) in [
+                    ("heard/heard-ts", 1270, "audit/flags"),
+                    ("heard/heard-ts", 1287, "audit/kafka-producer"),
+                    ("heard/web", 7, "web/thing"),
+                ] {
+                    m.remember(
+                        "/work/x",
+                        Remembered {
+                            repo: repo.into(),
+                            number: n,
+                            pr_id: format!("PR_{n}"),
+                            head_ref: head.into(),
+                        },
+                    );
+                }
+                true
+            })
+            .unwrap();
+        /// FakeGh's answers, with each call's variables copied out of the worker thread.
+        struct Shared(
+            FakeGh,
+            std::sync::Arc<std::sync::Mutex<Vec<(&'static str, serde_json::Value)>>>,
+        );
+        impl Gh for Shared {
+            fn graphql(&self, q: &str, v: &serde_json::Value) -> Result<String, GhError> {
+                let out = self.0.graphql(q, v);
+                let last = self.0.calls.borrow().last().cloned().expect("recorded");
+                self.1.lock().unwrap().push(last);
+                out
+            }
+        }
+        let log = std::sync::Arc::default();
+        let gh = FakeGh::new()
+            .with("search", Ok(SEARCH.into()))
+            .with("detail", Ok(DETAIL.into()));
+        let (tx, rx) = spawn(Box::new(Shared(gh, std::sync::Arc::clone(&log))), state);
+        tx.send(FetchRequest::Forced).unwrap();
+        until_done(&rx);
+        let calls = log.lock().unwrap();
+        let details: Vec<&serde_json::Value> = calls
+            .iter()
+            .filter(|(k, _)| *k == "detail")
+            .map(|(_, v)| v)
+            .collect();
+        // One request per repo, remembered ids alongside the search hits.
+        let find = |id: &str| {
+            details.iter().find_map(|v| {
+                let o = v.as_object().unwrap();
+                let (key, _) = o.iter().find(|(_, val)| val.as_str() == Some(id))?;
+                let n = key.strip_prefix("id").unwrap();
+                Some((o.len(), o.get(&format!("head{n}")).cloned()))
+            })
+        };
+        assert_eq!(
+            find("PR_1270").map(|(_, h)| h),
+            Some(Some(serde_json::json!("audit/flags")))
+        );
+        assert_eq!(
+            find("PR_7").map(|(_, h)| h),
+            Some(Some(serde_json::json!("web/thing")))
+        );
+        // #1287 came from search too: fetched once.
+        let times = details
+            .iter()
+            .flat_map(|v| v.as_object().unwrap().values())
+            .filter(|v| v.as_str() == Some("PR_1287"))
+            .count();
+        assert_eq!(times, 1);
+        let web = details
+            .iter()
+            .find(|v| v.as_object().unwrap().values().any(|x| x == "PR_7"))
+            .unwrap();
+        assert_eq!(web.as_object().unwrap().len(), 2, "heard/web alone: {web}");
     }
 
     #[test]

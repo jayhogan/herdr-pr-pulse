@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "by_checkout": {
+    "/work/heard-ts-audit": [
+      { "repo": "heard/heard-ts", "number": 1270, "pr_id": "PR_1270", "head_ref": "audit/flags" },
+      { "repo": "heard/heard-ts", "number": 1284, "pr_id": "PR_1284", "head_ref": "audit/schema" },
+      { "repo": "heard/heard-ts", "number": 1287, "pr_id": "PR_1287", "head_ref": "audit/kafka-producer" },
+      { "repo": "heard/heard-ts", "number": 1291, "pr_id": "PR_1291", "head_ref": "audit/consumer" },
+      { "repo": "heard/heard-ts", "number": 1295, "pr_id": "PR_1295", "head_ref": "audit/viewer" }
+    ],
+    "/work/docket-thread": [
+      { "repo": "heard/docket", "number": 412, "pr_id": "PR_412", "head_ref": "thread-model/model" }
+    ],
+    "/work/heard-ts-notes": [
+      { "repo": "heard/heard-ts", "number": 1302, "pr_id": "PR_1302", "head_ref": "notes/tokenize" }
+    ]
+  }
+}

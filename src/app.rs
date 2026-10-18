@@ -1,6 +1,7 @@
 //! View model for the Mine view (spec §7, §10): turns PRs into a renderable `Screen`.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
 
 use chrono::{DateTime, FixedOffset, Utc};
 
@@ -8,8 +9,12 @@ use crate::attention::{
     AgentState, Attention, Counts, Reason, count, first_blocker, level, mergeable_through,
 };
 use crate::fetch::{FetchEvent, RepoStatus};
+use crate::git::Branches;
+use crate::herdr::Snapshot;
 use crate::model::{MergeState, Pr, PrState};
 use crate::stacks::{self, Group, GroupKind};
+use crate::store::StateDir;
+use crate::workspaces::{self, Memory, PaneCheckout, Remembered};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ViewKind {
@@ -143,7 +148,16 @@ pub struct App {
     sort: SortOrder,
     cursor: usize,
     folds: BTreeSet<String>,
-    agents: BTreeMap<String, AgentState>,
+    /// PR Pulse's own pane, for `⎇` and so a Workspace copy remembers its checkout.
+    own_pane: Option<String>,
+    /// The last herdr snapshot succeeded. When false there are no agents and memory is
+    /// not pruned.
+    herdr_ok: bool,
+    panes: Vec<PaneCheckout>,
+    memory: Memory,
+    path_exists: fn(&str) -> bool,
+    /// Per group key: the stack's agent and its checked-out layer.
+    agents: BTreeMap<String, (AgentDot, Option<u32>)>,
     data: Option<Data>,
     fetching: bool,
     /// The last fetch failed; rows (if any) are from an earlier one.
@@ -181,6 +195,11 @@ impl App {
             sort: SortOrder::Urgency,
             cursor: 0,
             folds: BTreeSet::new(),
+            own_pane: None,
+            herdr_ok: false,
+            panes: Vec::new(),
+            memory: Memory::default(),
+            path_exists: |p| Path::new(p).exists(),
             agents: BTreeMap::new(),
             data: None,
             fetching: false,
@@ -188,6 +207,10 @@ impl App {
             banner: None,
             progress: LoadProgress::default(),
         }
+    }
+
+    pub fn kind(&self) -> ViewKind {
+        self.kind
     }
 
     pub fn set_prs(
@@ -205,6 +228,7 @@ impl App {
             viewer: viewer.to_string(),
             fetched_at,
         });
+        self.refresh_agents();
     }
 
     pub fn apply_fetch(&mut self, ev: FetchEvent, now: DateTime<Utc>) {
@@ -279,10 +303,95 @@ impl App {
         self.cursor = self.cursor.min(last).saturating_add_signed(delta).min(last);
     }
 
-    /// Replaced by the real herdr mapping in Task 13.
-    #[cfg(test)]
-    pub fn set_agents_for_test(&mut self, agents: BTreeMap<String, AgentState>) {
-        self.agents = agents;
+    /// PR Pulse's own herdr pane (`$HERDR_PANE_ID`).
+    pub fn set_own_pane(&mut self, pane_id: String) {
+        self.own_pane = Some(pane_id);
+    }
+
+    /// How memory pruning checks that a checkout path still exists (fixtures fake it).
+    pub fn set_path_exists(&mut self, exists: fn(&str) -> bool) {
+        self.path_exists = exists;
+    }
+
+    /// Applies a herdr snapshot (spec §8): maps panes to checkouts, remembers the PR each
+    /// pane has checked out, prunes the memory and recomputes the stacks' agents. An `Err`
+    /// (herdr unreachable) clears the agents and leaves the memory alone.
+    pub fn apply_snapshot(
+        &mut self,
+        snap: Result<Snapshot, String>,
+        branches: &mut dyn Branches,
+        state: &StateDir,
+        _now: DateTime<Utc>,
+    ) {
+        let snap = match snap {
+            Ok(s) => s,
+            Err(_) => {
+                self.herdr_ok = false;
+                self.panes.clear();
+                if let Ok(m) = state.load(workspaces::FILE) {
+                    self.memory = m;
+                }
+                self.refresh_agents();
+                return;
+            }
+        };
+        self.herdr_ok = true;
+        self.panes = workspaces::pane_checkouts(&snap, branches, self.own_pane.as_deref());
+
+        let prs: Vec<&Pr> = self
+            .data
+            .iter()
+            .flat_map(|d| d.groups.iter().flat_map(|g| &g.layers))
+            .collect();
+        let found: Vec<(String, Remembered)> = self
+            .panes
+            .iter()
+            .filter_map(|pane| {
+                // An open PR wins over an older merged/closed one on the same branch.
+                let pr = prs
+                    .iter()
+                    .filter(|p| p.repo == pane.repo && p.head_ref == pane.branch)
+                    .max_by_key(|p| p.state == PrState::Open)?;
+                let r = Remembered {
+                    repo: pr.repo.clone(),
+                    number: pr.number,
+                    pr_id: pr.id.clone(),
+                    head_ref: pr.head_ref.clone(),
+                };
+                Some((pane.checkout_key.clone(), r))
+            })
+            .collect();
+        let live: BTreeSet<String> = snap
+            .workspaces
+            .iter()
+            .filter_map(|w| snap.checkout_key(&w.workspace_id))
+            .chain(self.panes.iter().map(|p| p.checkout_key.clone()))
+            .collect();
+        let exists = self.path_exists;
+        let change = |m: &mut Memory| {
+            let mut changed = false;
+            for (key, r) in &found {
+                changed |= m.remember(key, r.clone());
+            }
+            changed | m.prune(Some(&live), exists)
+        };
+        match state.update(workspaces::FILE, change) {
+            Ok(m) => self.memory = m,
+            // Keep going on what we have; the next snapshot tries the file again.
+            Err(_) => {
+                change(&mut self.memory);
+            }
+        }
+        self.refresh_agents();
+    }
+
+    fn refresh_agents(&mut self) {
+        self.agents = match &self.data {
+            Some(d) if self.herdr_ok => {
+                workspaces::stack_agents(&d.groups, &self.panes, &self.memory)
+            }
+            _ => BTreeMap::new(),
+        };
     }
 
     fn in_scope(&self, d: &Data, id: &str) -> bool {
@@ -296,11 +405,12 @@ impl App {
     }
 
     fn group_view(&self, d: &Data, g: &Group) -> GroupView {
-        let agent_state = self.agents.get(&g.key).copied();
-        let dot = agent_state.map(|state| AgentDot {
-            state,
-            pane_id: "test".into(),
-        });
+        let (dot, checked_out) = match self.agents.get(&g.key) {
+            Some((dot, n)) => (Some(dot.clone()), *n),
+            None => (None, None),
+        };
+        // The group's attention follows its agent, wherever that agent's pane is.
+        let agent_state = dot.as_ref().map(|d| d.state);
         let mut layer = 0;
         let last = g.layers.len().saturating_sub(1);
         let rows: Vec<RowView> = g
@@ -309,6 +419,8 @@ impl App {
             .enumerate()
             .map(|(i, p)| {
                 let open = p.state == PrState::Open;
+                // The dot shows once, on the checked-out layer (the renderer picks per view).
+                let here = checked_out == Some(p.number);
                 if open {
                     layer += 1;
                 }
@@ -318,8 +430,8 @@ impl App {
                     is_last: i == last,
                     attention: open.then(|| level(p, layer == 1, agent_state)),
                     waiting_on: if open { g.waiting_on(p.number) } else { None },
-                    agent: None,
-                    checked_out: false,
+                    agent: if here { dot.clone() } else { None },
+                    checked_out: here,
                     changed: false,
                     change_lines: Vec::new(),
                     foreign_author: (p.author != d.viewer).then(|| p.author.clone()),
@@ -344,6 +456,15 @@ impl App {
         }
     }
 
+    /// The branch PR Pulse's own pane has checked out (header `⎇`).
+    fn own_branch(&self) -> Option<String> {
+        let own = self.own_pane.as_deref()?;
+        self.panes
+            .iter()
+            .find(|p| p.pane_id == own)
+            .map(|p| p.branch.clone())
+    }
+
     pub fn screen(&self, now: DateTime<Utc>) -> Screen {
         let mut header = Header {
             view: self.kind,
@@ -355,7 +476,7 @@ impl App {
             fetched_at: None,
             fetching: self.fetching,
             stale: self.stale,
-            branch: None,
+            branch: self.own_branch(),
         };
         let mut counts = Counts::default();
         let body = match &self.data {
@@ -446,6 +567,19 @@ mod tests {
             "2026-10-17T14:32:08Z".parse().unwrap(),
         );
         a
+    }
+
+    /// Agents from the fixture snapshot, seen from the Mine copy's pane (w4:p1).
+    fn with_agents(a: &mut App, state: &StateDir) {
+        a.set_own_pane("w4:p1".into());
+        a.set_path_exists(|_| true);
+        let snap = crate::herdr::parse_snapshot(include_str!("../tests/fixtures/snapshot.json"));
+        a.apply_snapshot(
+            snap,
+            &mut crate::git::FixtureBranches::embedded(),
+            state,
+            now(),
+        );
     }
 
     fn groups(a: &App) -> Vec<GroupView> {
@@ -637,8 +771,8 @@ mod tests {
     #[test]
     fn summary_counts() {
         let mut a = app();
-        let key = audit_key(&a);
-        a.set_agents_for_test(BTreeMap::from([(key, AgentState::Idle)]));
+        let tmp = tempfile::tempdir().unwrap();
+        with_agents(&mut a, &StateDir::new(tmp.path().to_path_buf()));
         let s = a.screen(now());
         assert_eq!(
             s.summary.counts,
@@ -653,6 +787,40 @@ mod tests {
         assert_eq!(s.header.prs, 8);
         assert_eq!(s.header.stacks, 4);
         assert_eq!(s.header.repos, 2);
+    }
+
+    #[test]
+    fn agents_from_snapshot_and_dropped_when_herdr_unreachable() {
+        let mut a = app();
+        let tmp = tempfile::tempdir().unwrap();
+        let state = StateDir::new(tmp.path().to_path_buf());
+        with_agents(&mut a, &state);
+        let key = audit_key(&a);
+        let audit = |a: &App| groups(a).into_iter().find(|g| g.key == key).unwrap();
+        let g = audit(&a);
+        assert_eq!(
+            g.agent,
+            Some(AgentDot {
+                state: AgentState::Idle,
+                pane_id: "w1:p1".into()
+            })
+        );
+        let row = g.rows.iter().find(|r| r.checked_out).unwrap();
+        assert_eq!(row.pr.number, 1287);
+        assert_eq!(row.agent, g.agent);
+        assert_eq!(row.attention, Some(Attention::Urgent));
+        assert!(g.rows.iter().filter(|r| r.agent.is_some()).count() == 1);
+
+        a.apply_snapshot(
+            Err("herdr not running".into()),
+            &mut crate::git::FixtureBranches::embedded(),
+            &state,
+            now(),
+        );
+        let g = audit(&a);
+        assert_eq!(g.agent, None);
+        assert!(g.rows.iter().all(|r| r.agent.is_none() && !r.checked_out));
+        assert_eq!(g.rank, Attention::NeedsYou);
     }
 
     #[test]
