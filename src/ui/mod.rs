@@ -3,6 +3,7 @@ mod chrome;
 mod drawer;
 pub mod help;
 pub mod rows;
+mod states;
 pub mod theme;
 
 #[cfg(test)]
@@ -24,6 +25,11 @@ mod tests {
     }
 
     fn app_with(edit: impl FnOnce(&mut Vec<model::Pr>)) -> App {
+        app_with_at(edit, "2026-10-17T14:32:08Z")
+    }
+
+    /// `app_with`, its data fetched at `fetched_at`.
+    fn app_with_at(edit: impl FnOnce(&mut Vec<model::Pr>), fetched_at: &str) -> App {
         let mut prs =
             model::parse_detail(include_str!("../../tests/fixtures/detail.json")).unwrap();
         edit(&mut prs);
@@ -35,7 +41,7 @@ mod tests {
             &ids(&s.authored),
             &ids(&s.assigned),
             &s.viewer,
-            "2026-10-17T14:32:08Z".parse().unwrap(),
+            fetched_at.parse().unwrap(),
         );
         // Agents come from the fixture snapshot, seen from the Mine copy's pane (w4:p1).
         let tmp = tempfile::tempdir().unwrap();
@@ -153,7 +159,11 @@ mod tests {
         for width in [120, 80, 44, 34] {
             let buf = draw(&a, width, 30);
             let lines = text_lines(&buf);
-            assert!(lines[0].contains("✗ stale"), "{width}: {}", lines[0]);
+            assert!(
+                lines[0].contains("✗ offline · stale 18s"),
+                "{width}: {}",
+                lines[0]
+            );
             assert!(text(&buf).contains("✗ GitHub login expired"), "{width}");
             assert!(text(&buf).contains("#1287"), "{width}: rows kept");
         }
@@ -163,7 +173,9 @@ mod tests {
     fn loading_lists_repos() {
         use crate::fetch::{FetchEvent, RepoStatus};
         let mut a = App::new(ViewKind::Mine, FixedOffset::east_opt(0).unwrap());
+        spin(&mut a, 2);
         assert!(text(&draw(&a, 80, 10)).contains("⠹ loading…"));
+        assert!(text(&draw(&a, 80, 10)).contains("⠹ Fetching your pull requests"));
         a.apply_fetch(
             FetchEvent::Progress(vec![
                 ("heard/docket".into(), RepoStatus::Done(2)),
@@ -629,5 +641,314 @@ mod tests {
             assert!(t.contains("⚠ conflicts with main"), "{width}:\n{t}");
             assert!(!t.contains("no conflicts"), "{width}:\n{t}");
         }
+    }
+
+    // ------------------------------------------------------------ board 4: states
+
+    fn spin(a: &mut App, frames: usize) {
+        for _ in 0..frames {
+            a.advance_spinner();
+        }
+    }
+
+    fn fetch_error(a: &mut App, e: crate::github::GhError) {
+        let cache = crate::store::Cache {
+            error: Some(e),
+            ..Default::default()
+        };
+        a.apply_fetch(crate::fetch::FetchEvent::Done(cache), now());
+    }
+
+    #[test]
+    fn loading_mine_80() {
+        use crate::fetch::{FetchEvent, RepoStatus};
+        let mut a = App::new(ViewKind::Mine, FixedOffset::east_opt(0).unwrap());
+        a.apply_fetch(FetchEvent::Started, now());
+        a.apply_fetch(
+            FetchEvent::Progress(vec![
+                ("heard/heard-ts".into(), RepoStatus::Done(5)),
+                ("heard/docket".into(), RepoStatus::Loading),
+                ("heard/sage".into(), RepoStatus::Queued),
+            ]),
+            now(),
+        );
+        spin(&mut a, 2);
+        let buf = draw(&a, 80, 14);
+        let lines = text_lines(&buf);
+        assert!(lines[0].ends_with("⠹ loading…"), "{}", lines[0]);
+        assert!(
+            lines
+                .iter()
+                .any(|l| l == "  ⠹ Fetching your pull requests   2 of 3 repos"),
+            "{}",
+            text(&buf)
+        );
+        assert!(lines.iter().any(|l| l.starts_with("  ░░ ░░░░")));
+        insta::assert_snapshot!(text(&buf));
+    }
+
+    #[test]
+    fn empty_mine_80() {
+        let prs = model::parse_detail(include_str!("../../tests/fixtures/detail.json")).unwrap();
+        let s = model::parse_search(include_str!("../../tests/fixtures/search.json")).unwrap();
+        let assigned: Vec<String> = s.assigned.iter().map(|h| h.id.clone()).collect();
+        let mut a = App::new(ViewKind::Mine, FixedOffset::east_opt(0).unwrap());
+        a.set_prs(
+            prs,
+            &[],
+            &assigned,
+            &s.viewer,
+            "2026-10-17T14:32:22Z".parse().unwrap(),
+        );
+        a.cycle_scope(); // authored: nothing open
+        let buf = draw(&a, 80, 14);
+        let lines = text_lines(&buf);
+        assert!(lines.iter().any(|l| l == "  ✓ Nothing is waiting on you."));
+        assert!(
+            lines
+                .iter()
+                .any(|l| l == "    s show PRs assigned to you (2)"),
+            "{}",
+            text(&buf)
+        );
+        insta::assert_snapshot!(text(&buf));
+    }
+
+    #[test]
+    fn error_auth_mine_80() {
+        let mut a = app_with_at(|_| {}, "2026-10-17T14:18:26Z");
+        a.move_cursor(2);
+        fetch_error(&mut a, crate::github::GhError::LoginExpired);
+        let buf = draw(&a, 80, 30);
+        let lines = text_lines(&buf);
+        assert!(lines[0].ends_with("✗ offline · stale 14m"), "{}", lines[0]);
+        assert!(
+            lines[1].starts_with(" ✗ GitHub login expired. Showing data from 14:18 (14m old)."),
+            "{}",
+            lines[1]
+        );
+        assert!(lines[1].ends_with("r retry"), "{}", lines[1]);
+        assert_eq!(
+            lines[2],
+            "   Fix: Run gh auth login in any pane, then press r."
+        );
+        // The banner line is red all the way across.
+        for x in 0..80 {
+            assert_eq!(buf[(x, 1)].bg, Color::Red, "banner cell {x}");
+        }
+        insta::assert_snapshot!(text(&buf));
+    }
+
+    #[test]
+    fn saml_banner_text() {
+        let mut a = app_with_at(|_| {}, "2026-10-17T14:18:26Z");
+        fetch_error(&mut a, crate::github::GhError::SamlSso);
+        let buf = draw(&a, 120, 12);
+        let lines = text_lines(&buf);
+        assert!(
+            lines[1].starts_with(
+                " ✗ Token not authorized for SAML SSO. Showing data from 14:18 (14m old)."
+            ),
+            "{}",
+            lines[1]
+        );
+        assert_eq!(
+            lines[2],
+            "   Fix: Run gh auth refresh, then authorize the token for your org at \
+             github.com/settings/tokens, then press r."
+        );
+        insta::assert_snapshot!(text(&buf));
+    }
+
+    #[test]
+    fn stale_rows_are_dim_with_glyphs_kept() {
+        let mut a = app();
+        fetch_error(&mut a, crate::github::GhError::LoginExpired);
+        for width in [120, 80, 44] {
+            let buf = draw(&a, width, 40);
+            let y = line_of(&buf, "#1287") as u16;
+            assert!(text_lines(&buf)[y as usize].contains("▲▲"), "{width}");
+            for x in 0..width {
+                let c = &buf[(x, y)];
+                assert_ne!(c.bg, Color::Red, "{width}: cell {x} keeps the red row");
+                if !c.symbol().trim().is_empty() {
+                    assert_eq!(c.fg, Color::DarkGray, "{width}: cell {x} '{}'", c.symbol());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn header_shows_spinner_and_stale_together() {
+        let mut a = app();
+        fetch_error(&mut a, crate::github::GhError::LoginExpired);
+        a.apply_fetch(crate::fetch::FetchEvent::Started, now());
+        spin(&mut a, 2);
+        for width in [120, 80, 44] {
+            let l = text_lines(&draw(&a, width, 30))[0].clone();
+            assert!(l.contains("⠹ ✗ offline · stale 18s"), "{width}: {l}");
+        }
+        // The spinner turns once per frame.
+        spin(&mut a, 1);
+        assert!(text_lines(&draw(&a, 80, 30))[0].contains("⠸ ✗ offline"));
+    }
+
+    /// A Workspace copy in w1 whose panes sit on branches without PRs (heard/web).
+    fn no_pr_workspace(dir: &std::path::Path) -> App {
+        let snap = r#"{"result":{"snapshot":{
+            "workspaces":[{"workspace_id":"w1","worktree":{"checkout_path":"/work/web"}}],
+            "panes":[
+              {"pane_id":"w1:p1","workspace_id":"w1","cwd":"/work/web"},
+              {"pane_id":"w1:p2","workspace_id":"w1","cwd":"/work/web-2"},
+              {"pane_id":"w1:p3","workspace_id":"w1","cwd":"/work/web-spike"},
+              {"pane_id":"w1:p4","workspace_id":"w1","cwd":"/work/web","focused":true}],
+            "agents":[
+              {"pane_id":"w1:p1","workspace_id":"w1","agent_status":"working"},
+              {"pane_id":"w1:p2","workspace_id":"w1","agent_status":"idle"},
+              {"pane_id":"w1:p3","workspace_id":"w1","agent_status":"idle"}]}}}"#;
+        let branches = r#"{
+            "/work/web": {"repo":"heard/web","branch":"main","toplevel":"/work/web"},
+            "/work/web-2": {"repo":"heard/web","branch":"main","toplevel":"/work/web-2"},
+            "/work/web-spike": {"repo":"heard/web","branch":"spike/kafka-retry","toplevel":"/work/web-spike"}}"#;
+        let mut a = App::new(ViewKind::Workspace, FixedOffset::east_opt(0).unwrap());
+        a.set_own_pane("w1:p4".into());
+        a.set_path_exists(|_| true);
+        a.apply_snapshot(
+            crate::herdr::parse_snapshot(snap),
+            &mut crate::git::FixtureBranches::from_json(branches).unwrap(),
+            &StateDir::new(dir.to_path_buf()),
+            now(),
+        );
+        a
+    }
+
+    #[test]
+    fn loading_ws_44() {
+        use crate::fetch::{FetchEvent, RepoStatus};
+        let tmp = tempfile::tempdir().unwrap();
+        let mut a = App::new(ViewKind::Workspace, FixedOffset::east_opt(0).unwrap());
+        a.set_own_pane("w1:p2".into());
+        a.set_path_exists(|_| true);
+        a.apply_snapshot(
+            crate::herdr::parse_snapshot(include_str!("../../tests/fixtures/snapshot.json")),
+            &mut crate::git::FixtureBranches::embedded(),
+            &StateDir::new(tmp.path().to_path_buf()),
+            now(),
+        );
+        a.apply_fetch(FetchEvent::Started, now());
+        a.apply_fetch(
+            FetchEvent::Progress(vec![
+                ("heard/docket".into(), RepoStatus::Done(2)),
+                ("heard/heard-ts".into(), RepoStatus::Loading),
+            ]),
+            now(),
+        );
+        spin(&mut a, 2);
+        let buf = draw(&a, 44, 14);
+        let lines = text_lines(&buf);
+        assert!(lines[0].ends_with("⠹ loading"), "{}", lines[0]);
+        assert!(
+            lines.iter().any(|l| l == " ⠹ Matching panes to PRs"),
+            "{}",
+            text(&buf)
+        );
+        insta::assert_snapshot!(text(&buf));
+    }
+
+    #[test]
+    fn empty_ws_44() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut a = no_pr_workspace(tmp.path());
+        let prs = model::parse_detail(include_str!("../../tests/fixtures/detail.json")).unwrap();
+        a.set_prs(
+            prs,
+            &[],
+            &[],
+            "jay",
+            "2026-10-17T14:32:22Z".parse().unwrap(),
+        );
+        let buf = draw(&a, 44, 14);
+        let t = text(&buf);
+        assert!(t.contains(" ○ No PRs in this workspace"), "{t}");
+        assert!(t.contains("w1:p3 spike/kafka-retry (no PR)"), "{t}");
+        assert!(!t.contains("main (no PR)"), "{t}");
+        insta::assert_snapshot!(t);
+    }
+
+    #[test]
+    fn herdr_down_ws_44() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut a = ws_app_in(tmp.path());
+        a.apply_snapshot(
+            Err("herdr not running".into()),
+            &mut crate::git::FixtureBranches::embedded(),
+            &StateDir::new(tmp.path().to_path_buf()),
+            now(),
+        );
+        let buf = draw(&a, 44, 30);
+        let lines = text_lines(&buf);
+        assert!(
+            lines[1].starts_with(" ✗ herdr not responding · agent state ?"),
+            "{}",
+            lines[1]
+        );
+        assert_eq!(buf[(0, 1)].bg, Color::Red);
+        assert!(
+            lines
+                .iter()
+                .any(|l| l == "   ? = agent state unknown; ⏎ disabled")
+        );
+        insta::assert_snapshot!(text(&buf));
+        a.handle_key(crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::Enter,
+            crossterm::event::KeyModifiers::NONE,
+        ));
+        assert_eq!(a.screen(now()).status.as_deref(), Some("herdr unreachable"));
+    }
+
+    #[test]
+    fn workspace_herdr_down_at_startup_explains() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut a = App::new(ViewKind::Workspace, FixedOffset::east_opt(0).unwrap());
+        a.set_own_pane("w1:p2".into());
+        a.apply_snapshot(
+            Err("herdr not running".into()),
+            &mut crate::git::FixtureBranches::embedded(),
+            &StateDir::new(tmp.path().to_path_buf()),
+            now(),
+        );
+        let t = text(&draw(&a, 44, 14));
+        assert!(t.contains("✗ herdr not responding"), "{t}");
+        assert!(t.contains("until herdr answers"), "{t}");
+    }
+
+    #[test]
+    fn workspace_outside_a_checkout_says_so() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut a = App::new(ViewKind::Workspace, FixedOffset::east_opt(0).unwrap());
+        a.set_own_pane("w4:p1".into()); // /home/me: no git checkout
+        a.apply_snapshot(
+            crate::herdr::parse_snapshot(include_str!("../../tests/fixtures/snapshot.json")),
+            &mut crate::git::FixtureBranches::embedded(),
+            &StateDir::new(tmp.path().to_path_buf()),
+            now(),
+        );
+        for width in [80, 44] {
+            let t = text(&draw(&a, width, 14));
+            assert!(
+                t.contains("PR Pulse isn't in a git checkout"),
+                "{width}: {t}"
+            );
+        }
+    }
+
+    #[test]
+    fn filter_with_no_match_says_so() {
+        let mut a = app();
+        a.handle_key(key('/'));
+        for c in "zzz".chars() {
+            a.handle_key(key(c));
+        }
+        assert!(text(&draw(&a, 80, 20)).contains("no stacks match"));
     }
 }

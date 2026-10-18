@@ -1,0 +1,19 @@
+---
+source: src/ui/mod.rs
+assertion_line: 851
+expression: text(&buf)
+---
+ PR Pulse                         ⠹ loading
+                     ⎇ audit/kafka-producer
+ ⠹ Matching panes to PRs
+   ✓ 1 agent pane in this workspace
+   ⠹ looking up PRs on GitHub · 2 of 2 repos
+   · checks + reviews queued
+ ░░ ░ ░░░░░ ░░░░░░░░░░░░░░░░░░         ░
+      ░░░░░░ ░░░░ ░░ ░░░░░░░
+
+
+
+
+
+j/k move ␣ details ⏎ jump o open ? keys

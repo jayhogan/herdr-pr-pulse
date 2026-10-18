@@ -53,8 +53,30 @@ pub enum SortOrder {
 pub struct LoadProgress {
     pub repos: Vec<(String, RepoStatus)>,
 }
-#[derive(Debug, Clone, PartialEq, Default)]
-pub struct EmptyInfo;
+/// Why there is nothing to list (board 4).
+#[derive(Debug, Clone, PartialEq)]
+pub enum EmptyInfo {
+    /// Nothing open in this scope; `other_scope_count` PRs are in the scope(s) `s` reaches.
+    Mine {
+        scope: Scope,
+        other_scope_count: usize,
+        repos: Vec<String>,
+    },
+    /// No stack in this workspace: its agent panes as (pane, branch, has PR, agent state).
+    Workspace {
+        panes: Vec<(String, String, bool, Option<AgentState>)>,
+    },
+    /// herdr is unreachable and this copy never learned which checkout it is in.
+    HerdrDown,
+    /// PR Pulse's own pane is not in a git checkout.
+    NoCheckout,
+}
+
+/// Header and loading spinner frames, one per draw.
+pub const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+/// The banner while herdr does not answer (PR data stays live).
+const HERDR_DOWN: &str = "herdr not responding · agent state ?";
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Banner {
     pub message: String,
@@ -118,6 +140,8 @@ pub struct Header {
     pub fetching: bool,
     pub stale: bool,
     pub branch: Option<String>,
+    /// The spinner's current frame.
+    pub spinner: &'static str,
 }
 
 #[derive(Debug, PartialEq)]
@@ -151,6 +175,10 @@ pub struct Screen {
     pub status: Option<String>,
     /// The last herdr snapshot succeeded (else agent dots read `?`).
     pub herdr_ok: bool,
+    /// The last herdr snapshot failed (not merely: none taken yet).
+    pub herdr_down: bool,
+    /// Workspace view: agent panes in this workspace, once herdr has answered.
+    pub agent_panes: Option<usize>,
     pub now: DateTime<Utc>,
     pub clock: FixedOffset,
 }
@@ -195,6 +223,10 @@ pub struct App {
     /// The last herdr snapshot succeeded. When false there are no agents and memory is
     /// not pruned.
     herdr_ok: bool,
+    /// The last herdr snapshot failed.
+    herdr_down: bool,
+    /// Spinner frame, advanced once per draw.
+    spin: usize,
     panes: Vec<PaneCheckout>,
     memory: Memory,
     path_exists: fn(&str) -> bool,
@@ -260,6 +292,8 @@ impl App {
             own_checkout: None,
             status: None,
             herdr_ok: false,
+            herdr_down: false,
+            spin: 0,
             panes: Vec::new(),
             memory: Memory::default(),
             path_exists: |p| Path::new(p).exists(),
@@ -426,6 +460,11 @@ impl App {
                 Action::None
             }
         }
+    }
+
+    /// Turns the spinner one frame; the event loop calls this once per draw.
+    pub fn advance_spinner(&mut self) {
+        self.spin = (self.spin + 1) % SPINNER.len();
     }
 
     /// A one-line message in place of the key hints until the next key.
@@ -645,6 +684,7 @@ impl App {
             Ok(s) => s,
             Err(_) => {
                 self.herdr_ok = false;
+                self.herdr_down = true;
                 self.panes.clear();
                 if let Ok(m) = state.load(workspaces::FILE) {
                     self.memory = m;
@@ -653,6 +693,7 @@ impl App {
             }
         };
         self.herdr_ok = true;
+        self.herdr_down = false;
         self.panes = workspaces::pane_checkouts(&snap, branches, self.own_pane.as_deref());
         if let Some(own) = self.own_pane() {
             self.own_checkout = Some(own.checkout_key.clone());
@@ -822,12 +863,27 @@ impl App {
             fetching: self.fetching,
             stale: self.stale,
             branch: self.header_branch(),
+            spinner: SPINNER[self.spin],
         };
+        header.fetched_at = self.data.as_ref().map(|d| d.fetched_at);
         let mut counts = Counts::default();
-        let body = match &self.data {
-            None => Body::Loading(self.progress.clone()),
-            Some(d) => {
-                header.fetched_at = Some(d.fetched_at);
+        // A Workspace copy that cannot tell which checkout it is in has nothing to list.
+        let lost = match self.kind {
+            ViewKind::Workspace if self.own_checkout.is_none() => {
+                if self.herdr_down {
+                    Some(EmptyInfo::HerdrDown)
+                } else if self.herdr_ok {
+                    Some(EmptyInfo::NoCheckout)
+                } else {
+                    None // no snapshot yet
+                }
+            }
+            _ => None,
+        };
+        let body = match (&self.data, lost) {
+            (_, Some(info)) => Body::Empty(info),
+            (None, None) => Body::Loading(self.progress.clone()),
+            (Some(d), None) => {
                 let mut shown: Vec<(GroupView, DateTime<Utc>)> = d
                     .groups
                     .iter()
@@ -845,6 +901,10 @@ impl App {
                     .filter_map(|r| r.attention)
                     .collect();
                 counts = count(all_levels);
+                if shown.is_empty() {
+                    let body = Body::Empty(self.empty_info(d));
+                    return self.finish_screen(header, counts, body, now);
+                }
                 if let Some(f) = self.filter.as_ref().filter(|f| !f.text.is_empty()) {
                     let keep: BTreeSet<&str> = d
                         .groups
@@ -890,6 +950,67 @@ impl App {
                 Body::Groups(shown.into_iter().map(|(g, _)| g).collect())
             }
         };
+        self.finish_screen(header, counts, body, now)
+    }
+
+    /// What an empty view says instead (board 4).
+    fn empty_info(&self, d: &Data) -> EmptyInfo {
+        match self.kind {
+            ViewKind::Mine => {
+                let open = d
+                    .groups
+                    .iter()
+                    .flat_map(|g| &g.layers)
+                    .filter(|p| p.state == PrState::Open);
+                let other_scope_count = open
+                    .filter(|p| {
+                        (d.authored.contains(&p.id) || d.assigned.contains(&p.id))
+                            && !self.in_scope(d, &p.id)
+                    })
+                    .count();
+                let repos: BTreeSet<String> = d.groups.iter().map(|g| g.repo.clone()).collect();
+                EmptyInfo::Mine {
+                    scope: self.scope,
+                    other_scope_count,
+                    repos: repos.into_iter().collect(),
+                }
+            }
+            ViewKind::Workspace => {
+                let panes = self
+                    .workspace_agent_panes()
+                    .into_iter()
+                    .map(|p| {
+                        let has_pr = d
+                            .groups
+                            .iter()
+                            .flat_map(|g| &g.layers)
+                            .any(|pr| pr.repo == p.repo && pr.head_ref == p.branch);
+                        (p.pane_id.clone(), p.branch.clone(), has_pr, p.agent)
+                    })
+                    .collect();
+                EmptyInfo::Workspace { panes }
+            }
+        }
+    }
+
+    /// Agent panes in PR Pulse's own workspace.
+    fn workspace_agent_panes(&self) -> Vec<&PaneCheckout> {
+        let Some(own) = self.own_pane() else {
+            return Vec::new();
+        };
+        self.panes
+            .iter()
+            .filter(|p| p.agent.is_some() && p.workspace_id == own.workspace_id)
+            .collect()
+    }
+
+    fn finish_screen(
+        &self,
+        header: Header,
+        counts: Counts,
+        body: Body,
+        now: DateTime<Utc>,
+    ) -> Screen {
         let selectable = match &body {
             Body::Groups(gs) => gs
                 .iter()
@@ -913,7 +1034,13 @@ impl App {
                 changed: 0,
                 since: None,
             },
-            banner: self.banner.clone(),
+            // A GitHub error says more (and has a fix); herdr's shows when it is the only one.
+            banner: self.banner.clone().or_else(|| {
+                self.herdr_down.then(|| Banner {
+                    message: HERDR_DOWN.into(),
+                    fix: String::new(),
+                })
+            }),
             body,
             cursor: self.cursor.min(selectable.saturating_sub(1)),
             drawer_pr,
@@ -922,6 +1049,9 @@ impl App {
             filter: self.filter.clone(),
             status: self.status.clone(),
             herdr_ok: self.herdr_ok,
+            herdr_down: self.herdr_down,
+            agent_panes: (self.kind == ViewKind::Workspace && self.herdr_ok)
+                .then(|| self.workspace_agent_panes().len()),
             now,
             clock: self.clock,
         }
@@ -1078,6 +1208,56 @@ mod tests {
         assert!(matches!(s.body, Body::Loading(_)));
         assert!(s.header.stale);
         assert_eq!(s.banner.unwrap().message, "gh not found");
+    }
+
+    #[test]
+    fn herdr_banner_only_when_no_github_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = StateDir::new(tmp.path().to_path_buf());
+        let mut a = app();
+        // No snapshot yet is not "herdr down".
+        assert_eq!(a.screen(now()).banner, None);
+        a.apply_snapshot(
+            Err("herdr not running".into()),
+            &mut crate::git::FixtureBranches::embedded(),
+            &state,
+            now(),
+        );
+        let s = a.screen(now());
+        assert!(s.herdr_down);
+        assert_eq!(
+            s.banner.map(|b| b.message),
+            Some("herdr not responding · agent state ?".into())
+        );
+        let bad = crate::store::Cache {
+            error: Some(crate::github::GhError::LoginExpired),
+            ..Default::default()
+        };
+        a.apply_fetch(FetchEvent::Done(bad), now());
+        assert_eq!(
+            a.screen(now()).banner.map(|b| b.message),
+            Some("GitHub login expired".into())
+        );
+        with_agents(&mut a, &state);
+        assert!(!a.screen(now()).herdr_down);
+    }
+
+    #[test]
+    fn empty_mine_counts_the_other_scope() {
+        let mut a = app();
+        a.data.as_mut().unwrap().authored.clear();
+        a.cycle_scope(); // authored
+        let Body::Empty(EmptyInfo::Mine {
+            scope,
+            other_scope_count,
+            repos,
+        }) = a.screen(now()).body
+        else {
+            panic!("expected empty Mine")
+        };
+        assert_eq!(scope, Scope::Authored);
+        assert_eq!(other_scope_count, 2);
+        assert_eq!(repos, ["heard/docket", "heard/heard-ts"]);
     }
 
     #[test]

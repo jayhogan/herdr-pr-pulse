@@ -3,18 +3,23 @@
 use ratatui::text::{Line, Span};
 
 use crate::ago;
-use crate::app::{Header, Scope, Screen, SortOrder, ViewKind};
+use crate::app::{Body, Header, Scope, Screen, SortOrder, ViewKind};
 use crate::ui::cells::{cell, dw, fit, plural};
 use crate::ui::rows::Density::{self, *};
 use crate::ui::rows::{title_width, widths};
+use crate::ui::states::banner_lines;
 use crate::ui::theme;
 
 pub(super) fn top_lines(screen: &Screen, d: Density, width: usize) -> Vec<Line<'static>> {
     let mut out = vec![header_bar(&screen.header, screen, d, width)];
-    out.push(summary(screen, d, width));
+    // The banner takes the summary's place (board 4).
+    match &screen.banner {
+        Some(b) => out.extend(banner_lines(screen, b, d, width)),
+        None => out.push(summary(screen, d, width)),
+    }
     if matches!(d, Wide | Medium) {
         out.push(Line::styled("─".repeat(width), theme::dim()));
-        if !screen.help {
+        if !screen.help && matches!(screen.body, Body::Groups(_)) {
             out.push(column_titles(d, width));
         }
     }
@@ -39,6 +44,8 @@ fn header_bar(h: &Header, screen: &Screen, d: Density, width: usize) -> Line<'st
             "│ {scope} · {counts} · {}{branch}",
             plural(h.repos, "repo", "repos")
         ),
+        // Nothing listed (loading, empty): the scope says more than "0 PRs" (board 4).
+        Medium if h.stacks == 0 => format!("│ {scope}{branch}"),
         Medium => format!("│ {counts}{branch}"),
         Narrow | Tiny => String::new(),
     };
@@ -47,14 +54,27 @@ fn header_bar(h: &Header, screen: &Screen, d: Density, width: usize) -> Line<'st
         SortOrder::Updated => "updated",
         SortOrder::Repo => "repo",
     };
-    let spin = if h.fetching { "⠹" } else { "↻" };
+    let spin = if h.fetching { h.spinner } else { "↻" };
     let age = h.fetched_at.map(|t| ago::short(t, screen.now));
     let right = match (d, age) {
-        // Minimal stale marker; Task 18 draws the full error states.
-        (Wide | Medium, Some(age)) if h.stale => format!("sort: {sort} ▾ │ ✗ stale {age} "),
-        (_, Some(age)) if h.stale => format!("✗ stale {age} "),
-        (Wide | Medium, None) if h.stale => format!("sort: {sort} ▾ │ ✗ stale "),
-        (_, None) if h.stale => "✗ stale ".into(),
+        // A failed fetch: how old the rows are, and the spinner too while retrying.
+        (_, age) if h.stale => {
+            let busy = if h.fetching {
+                format!("{} ", h.spinner)
+            } else {
+                String::new()
+            };
+            let age = age.map_or(String::new(), |a| format!(" · stale {a}"));
+            let t = format!("{busy}✗ offline{age} ");
+            if d == Wide {
+                format!("sort: {sort} ▾  │  {t}")
+            } else {
+                t
+            }
+        }
+        // Nothing fetched yet.
+        (Wide | Medium, None) => format!("{} loading… ", h.spinner),
+        (_, None) => format!("{} loading ", h.spinner),
         (Wide, Some(age)) => {
             let at = h.fetched_at.unwrap().with_timezone(&screen.clock);
             format!(
@@ -62,11 +82,8 @@ fn header_bar(h: &Header, screen: &Screen, d: Density, width: usize) -> Line<'st
                 at.format("%H:%M:%S")
             )
         }
-        (Wide, None) => format!("sort: {sort} ▾ "),
         (Medium, Some(age)) => format!("sort: {sort} ▾ │ {spin} {age} "),
-        (Medium, None) => format!("sort: {sort} ▾ "),
         (_, Some(age)) => format!("{spin} {age} "),
-        (_, None) => String::new(),
     };
     let title = if matches!(d, Wide | Medium) {
         " PR Pulse "

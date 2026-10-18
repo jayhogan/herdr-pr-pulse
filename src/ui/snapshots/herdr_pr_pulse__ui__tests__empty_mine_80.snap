@@ -1,0 +1,19 @@
+---
+source: src/ui/mod.rs
+assertion_line: 714
+expression: text(&buf)
+---
+ PR Pulse │ authored                                     sort: urgency ▾ │ ↻ 4s
+
+────────────────────────────────────────────────────────────────────────────────
+  ✓ Nothing is waiting on you.
+    No open PRs authored by you in heard/docket, heard/heard-ts.
+
+    s show PRs assigned to you (2)
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+ j/k ␣ info ⏎ jump o open r ↻ s mine⇄asgn S sort h/l fold ? help

@@ -262,6 +262,7 @@ fn event_loop(
         if let Some(live) = live.as_deref_mut() {
             live.tick(app);
         }
+        app.advance_spinner();
         let screen = app.screen(Utc::now());
         let mut help_max = 0;
         terminal.draw(|frame| help_max = ui::rows::render(frame, &screen, &mut scroll))?;

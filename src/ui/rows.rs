@@ -11,7 +11,6 @@ use ratatui::widgets::Paragraph;
 
 use crate::app::{AgentDot, Body, GroupView, RowView, Screen, ViewKind};
 use crate::attention::{Attention, Reason, reasons};
-use crate::fetch::RepoStatus;
 use crate::model::PrState;
 use crate::stacks::GroupKind;
 use crate::ui::cells::{
@@ -20,7 +19,7 @@ use crate::ui::cells::{
 };
 use crate::ui::chrome::{footer, top_lines};
 use crate::ui::drawer::drawer_lines;
-use crate::ui::theme;
+use crate::ui::{states, theme};
 
 pub use crate::ui::cells::fit;
 
@@ -116,31 +115,18 @@ fn body_lines(screen: &Screen, width: u16) -> (Vec<Line<'static>>, usize, usize)
     let width = width as usize;
     let mut out = Vec::new();
     let (mut cursor_line, mut cursor_end) = (0, 0);
-    if let Some(b) = &screen.banner {
-        let t = format!("  ✗ {}. {}", b.message, b.fix);
-        out.push(Line::styled(fit(&t, width), theme::red()));
-    }
     let groups = match &screen.body {
-        Body::Loading(p) => {
-            if p.repos.is_empty() {
-                out.push(Line::styled(fit("  ⠹ loading…", width), theme::dim()));
-            }
-            for (repo, status) in &p.repos {
-                let t = match status {
-                    RepoStatus::Done(n) => format!("  ✓ {repo}  {}", plural(*n, "PR", "PRs")),
-                    RepoStatus::Loading => format!("  ⠹ {repo}"),
-                    RepoStatus::Queued => format!("  · {repo}"),
-                };
-                out.push(Line::styled(fit(&t, width), theme::dim()));
-            }
-            return (out, 0, 0);
-        }
-        Body::Empty(_) => {
-            out.push(Line::styled(fit("  no open PRs", width), theme::dim()));
-            return (out, 0, 0);
-        }
+        Body::Loading(p) => return (states::loading_lines(screen, p, d, width), 0, 0),
+        Body::Empty(info) => return (states::empty_lines(info, width), 0, 0),
         Body::Groups(gs) => gs,
     };
+    // Only the filter can empty the list; an empty view is `Body::Empty`.
+    if let (true, Some(f)) = (groups.is_empty(), &screen.filter) {
+        let t = format!("  no stacks match /{}", f.text);
+        out.push(Line::styled(fit(&t, width), theme::dim()));
+    }
+    // After a failed fetch every row is from the last good one: dim, glyphs kept.
+    let stale = screen.header.stale;
     let mut selectable = 0;
     for (i, g) in groups.iter().enumerate() {
         if i > 0 {
@@ -149,12 +135,8 @@ fn body_lines(screen: &Screen, width: u16) -> (Vec<Line<'static>>, usize, usize)
         if selectable == screen.cursor {
             (cursor_line, cursor_end) = (out.len(), out.len());
         }
-        out.push(group_header(
-            g,
-            d,
-            selectable == screen.cursor,
-            screen.herdr_ok,
-        ));
+        let header = group_header(g, d, selectable == screen.cursor, screen.herdr_ok);
+        out.push(Line::from(dim_if(header.spans, stale)));
         selectable += 1;
         if g.folded {
             continue;
@@ -182,6 +164,9 @@ fn body_lines(screen: &Screen, width: u16) -> (Vec<Line<'static>>, usize, usize)
             }
             selectable += 1;
         }
+    }
+    if screen.herdr_down && !groups.is_empty() {
+        out.push(states::herdr_note(width));
     }
     (out, cursor_line, cursor_end)
 }
@@ -363,7 +348,7 @@ fn group_header(g: &GroupView, d: Density, cursor: bool, herdr_ok: bool) -> Line
 
 // ---------------------------------------------------------------- PR rows
 
-/// Merged and closed layers render all dim.
+/// Merged and closed layers render all dim, and so does every row of stale data.
 fn dim_if(spans: Vec<Span<'static>>, dim: bool) -> Vec<Span<'static>> {
     if !dim {
         return spans;
@@ -397,7 +382,9 @@ fn row_lines(
     cur: bool,
 ) -> Vec<Line<'static>> {
     let pr = &r.pr;
-    let hot = r.attention == Some(Attention::Urgent);
+    let stale = screen.header.stale;
+    let hot = r.attention == Some(Attention::Urgent) && !stale;
+    let dim = stale || pr.state != PrState::Open;
     let (glyph, att_style) = r.attention.map_or(("", Style::new()), theme::attention);
     let em = if cur { theme::bold() } else { Style::new() };
     let pointer = if cur { "▶" } else { " " };
@@ -422,6 +409,13 @@ fn row_lines(
                 Span::styled("⎇ ", theme::dim()),
                 Span::styled(format!("{glyph} "), style),
             ]
+        }
+        // herdr unreachable: every open layer's agent is unknown.
+        None if screen.header.view == ViewKind::Workspace
+            && screen.herdr_down
+            && pr.state == PrState::Open =>
+        {
+            vec![Span::styled("? ", theme::dim())]
         }
         _ => Vec::new(),
     };
@@ -458,7 +452,7 @@ fn row_lines(
                 cell(&rv.0, w[7], rv.1),
                 cell(&m.0, w[8], m.1),
             ]);
-            vec![finish(dim_if(spans, closed), hot, width)]
+            vec![finish(dim_if(spans, dim), hot, width)]
         }
         Narrow | Tiny => {
             let title_w = width.saturating_sub(4 + 3 + 6 + 2);
@@ -497,8 +491,8 @@ fn row_lines(
                 ]
             };
             vec![
-                finish(dim_if(line1, closed), hot, width),
-                finish(dim_if(line2, closed), hot, width),
+                finish(dim_if(line1, dim), hot, width),
+                finish(dim_if(line2, dim), hot, width),
             ]
         }
     }

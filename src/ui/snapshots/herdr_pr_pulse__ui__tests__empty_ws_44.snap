@@ -1,0 +1,19 @@
+---
+source: src/ui/mod.rs
+assertion_line: 871
+expression: t
+---
+ PR Pulse                              ↻ 4s
+                                     ⎇ main
+ ○ No PRs in this workspace
+   3 agent panes, none on a PR branch:
+   ● w1:p1 main   ○ w1:p2 main
+   ○ w1:p3 spike/kafka-retry (no PR)
+   Open a PR from a branch to see it here.
+
+
+
+
+
+
+j/k move ␣ details ⏎ jump o open ? keys
