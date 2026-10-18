@@ -72,9 +72,11 @@ fn header_bar(h: &Header, screen: &Screen, d: Density, width: usize) -> Line<'st
                 t
             }
         }
-        // Nothing fetched yet.
-        (Wide | Medium, None) => format!("{} loading… ", h.spinner),
-        (_, None) => format!("{} loading ", h.spinner),
+        // Nothing fetched yet: the spinner only while a fetch runs.
+        (Wide | Medium, None) if h.fetching => format!("{} loading… ", h.spinner),
+        (_, None) if h.fetching => format!("{} loading ", h.spinner),
+        (Wide | Medium, None) => format!("sort: {sort} ▾ "),
+        (_, None) => String::new(),
         (Wide, Some(age)) => {
             let at = h.fetched_at.unwrap().with_timezone(&screen.clock);
             format!(

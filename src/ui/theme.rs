@@ -1,10 +1,10 @@
 //! The only place colors are chosen. ANSI 16 only: Red, Green, Yellow, Cyan, DarkGray,
-//! White (only on the hot row), Reset, plus BOLD and REVERSED.
+//! White (only in `hot_row`), Reset, plus BOLD and REVERSED.
 
 use crate::attention::{AgentState, Attention};
 use ratatui::style::{Color, Modifier, Style};
 
-/// The red `▲▲` row: the only style that uses White.
+/// The red `▲▲` row and the error banner: the only style that uses White.
 pub fn hot_row() -> Style {
     Style::new()
         .bg(Color::Red)

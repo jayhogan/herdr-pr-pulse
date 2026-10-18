@@ -117,7 +117,7 @@ fn body_lines(screen: &Screen, width: u16) -> (Vec<Line<'static>>, usize, usize)
     let (mut cursor_line, mut cursor_end) = (0, 0);
     let groups = match &screen.body {
         Body::Loading(p) => return (states::loading_lines(screen, p, d, width), 0, 0),
-        Body::Empty(info) => return (states::empty_lines(info, width), 0, 0),
+        Body::Empty(info) => return (states::empty_lines(info, screen.herdr_down, width), 0, 0),
         Body::Groups(gs) => gs,
     };
     // Only the filter can empty the list; an empty view is `Body::Empty`.

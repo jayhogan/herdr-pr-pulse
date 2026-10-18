@@ -1,0 +1,35 @@
+---
+source: src/ui/mod.rs
+assertion_line: 942
+expression: "text(&draw(&a, 34, 30))"
+---
+ PR Pulse                   ↻ 18s
+ ✗ herdr not responding · agen… r
+▾ audit ◆▲△◷ ? L1/4 ok
+ ╭ main
+ ├1 ◆  #1284 audit: schema f… ?
+ │  ✓ 9/9     ✓   ·0   ✓ clean
+▶├2 ▲  #1287 audit: kafka pr… ?
+ │  ✗ 1/9     ✗   ◇3   ◷#1284
+ ├3 △  #1291 audit: consumer… ?
+ │  ✓ 9/9     ○2  ◇1   ◷#1287
+ └4 ◷  #1295 audit: viewer UI ?
+    ◐ 5/9     ∅   ·0   ◷#1291
+
+▾ standalone ?
+ ──    #1270 audit: feature fl…
+    ⊙ merged 2d ago
+   ? = agent state unknown; ⏎ dis…
+
+
+
+
+
+
+
+
+
+
+
+
+j/k ␣ info ⏎ jump ? keys

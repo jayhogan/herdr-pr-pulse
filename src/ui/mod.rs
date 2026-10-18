@@ -174,6 +174,11 @@ mod tests {
         use crate::fetch::{FetchEvent, RepoStatus};
         let mut a = App::new(ViewKind::Mine, FixedOffset::east_opt(0).unwrap());
         spin(&mut a, 2);
+        assert!(
+            !text(&draw(&a, 80, 10)).contains("loading…"),
+            "not fetching yet"
+        );
+        a.apply_fetch(FetchEvent::Started, now());
         assert!(text(&draw(&a, 80, 10)).contains("⠹ loading…"));
         assert!(text(&draw(&a, 80, 10)).contains("⠹ Fetching your pull requests"));
         a.apply_fetch(
@@ -689,18 +694,7 @@ mod tests {
 
     #[test]
     fn empty_mine_80() {
-        let prs = model::parse_detail(include_str!("../../tests/fixtures/detail.json")).unwrap();
-        let s = model::parse_search(include_str!("../../tests/fixtures/search.json")).unwrap();
-        let assigned: Vec<String> = s.assigned.iter().map(|h| h.id.clone()).collect();
-        let mut a = App::new(ViewKind::Mine, FixedOffset::east_opt(0).unwrap());
-        a.set_prs(
-            prs,
-            &[],
-            &assigned,
-            &s.viewer,
-            "2026-10-17T14:32:22Z".parse().unwrap(),
-        );
-        a.cycle_scope(); // authored: nothing open
+        let a = empty_mine_app();
         let buf = draw(&a, 80, 14);
         let lines = text_lines(&buf);
         assert!(lines.iter().any(|l| l == "  ✓ Nothing is waiting on you."));
@@ -714,11 +708,31 @@ mod tests {
         insta::assert_snapshot!(text(&buf));
     }
 
+    /// Mine in the authored scope with nothing authored; two PRs are assigned.
+    fn empty_mine_app() -> App {
+        let prs = model::parse_detail(include_str!("../../tests/fixtures/detail.json")).unwrap();
+        let s = model::parse_search(include_str!("../../tests/fixtures/search.json")).unwrap();
+        let assigned: Vec<String> = s.assigned.iter().map(|h| h.id.clone()).collect();
+        let mut a = App::new(ViewKind::Mine, FixedOffset::east_opt(0).unwrap());
+        a.set_prs(
+            prs,
+            &[],
+            &assigned,
+            &s.viewer,
+            "2026-10-17T14:32:22Z".parse().unwrap(),
+        );
+        a.cycle_scope(); // authored: nothing open
+        a
+    }
+
+    #[test]
+    fn empty_mine_34() {
+        insta::assert_snapshot!(text(&draw(&empty_mine_app(), 34, 14)));
+    }
+
     #[test]
     fn error_auth_mine_80() {
-        let mut a = app_with_at(|_| {}, "2026-10-17T14:18:26Z");
-        a.move_cursor(2);
-        fetch_error(&mut a, crate::github::GhError::LoginExpired);
+        let a = error_auth_app();
         let buf = draw(&a, 80, 30);
         let lines = text_lines(&buf);
         assert!(lines[0].ends_with("✗ offline · stale 14m"), "{}", lines[0]);
@@ -737,6 +751,30 @@ mod tests {
             assert_eq!(buf[(x, 1)].bg, Color::Red, "banner cell {x}");
         }
         insta::assert_snapshot!(text(&buf));
+    }
+
+    /// Board 4's error state: login expired, rows from a fetch 14 minutes earlier.
+    fn error_auth_app() -> App {
+        let mut a = app_with_at(|_| {}, "2026-10-17T14:18:26Z");
+        a.move_cursor(2);
+        fetch_error(&mut a, crate::github::GhError::LoginExpired);
+        a
+    }
+
+    #[test]
+    fn error_auth_mine_34() {
+        insta::assert_snapshot!(text(&draw(&error_auth_app(), 34, 30)));
+    }
+
+    #[test]
+    fn saml_banner_80_keeps_the_age() {
+        let mut a = app_with_at(|_| {}, "2026-10-17T14:18:26Z");
+        fetch_error(&mut a, crate::github::GhError::SamlSso);
+        let buf = draw(&a, 80, 12);
+        let lines = text_lines(&buf);
+        assert!(lines[1].contains("(14m old)"), "{}", lines[1]);
+        assert!(!lines[1].contains('…'), "{}", lines[1]);
+        assert!(lines[1].ends_with("r retry"), "{}", lines[1]);
     }
 
     #[test]
@@ -858,15 +896,7 @@ mod tests {
     #[test]
     fn empty_ws_44() {
         let tmp = tempfile::tempdir().unwrap();
-        let mut a = no_pr_workspace(tmp.path());
-        let prs = model::parse_detail(include_str!("../../tests/fixtures/detail.json")).unwrap();
-        a.set_prs(
-            prs,
-            &[],
-            &[],
-            "jay",
-            "2026-10-17T14:32:22Z".parse().unwrap(),
-        );
+        let a = empty_ws_app(tmp.path());
         let buf = draw(&a, 44, 14);
         let t = text(&buf);
         assert!(t.contains(" ○ No PRs in this workspace"), "{t}");
@@ -875,16 +905,96 @@ mod tests {
         insta::assert_snapshot!(t);
     }
 
+    /// `no_pr_workspace` with the fixture PRs fetched: none is on its panes' branches.
+    fn empty_ws_app(dir: &std::path::Path) -> App {
+        let mut a = no_pr_workspace(dir);
+        let prs = model::parse_detail(include_str!("../../tests/fixtures/detail.json")).unwrap();
+        a.set_prs(
+            prs,
+            &[],
+            &[],
+            "jay",
+            "2026-10-17T14:32:22Z".parse().unwrap(),
+        );
+        a
+    }
+
     #[test]
-    fn herdr_down_ws_44() {
+    fn empty_ws_34() {
         let tmp = tempfile::tempdir().unwrap();
-        let mut a = ws_app_in(tmp.path());
+        insta::assert_snapshot!(text(&draw(&empty_ws_app(tmp.path()), 34, 14)));
+    }
+
+    fn herdr_down(a: &mut App, dir: &std::path::Path) {
         a.apply_snapshot(
             Err("herdr not running".into()),
+            &mut crate::git::FixtureBranches::embedded(),
+            &StateDir::new(dir.to_path_buf()),
+            now(),
+        );
+    }
+
+    #[test]
+    fn herdr_down_ws_34() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut a = ws_app_in(tmp.path());
+        herdr_down(&mut a, tmp.path());
+        insta::assert_snapshot!(text(&draw(&a, 34, 30)));
+    }
+
+    #[test]
+    fn empty_ws_with_herdr_down_says_panes_unknown() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut a = empty_ws_app(tmp.path());
+        herdr_down(&mut a, tmp.path());
+        let t = text(&draw(&a, 80, 14));
+        assert!(t.contains("No PRs in this workspace"), "{t}");
+        assert!(
+            t.contains("Agent panes unknown while herdr isn't responding."),
+            "{t}"
+        );
+        assert!(!t.contains("No agent panes"), "{t}");
+    }
+
+    #[test]
+    fn ws_error_before_any_data_44() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut a = no_pr_workspace(tmp.path());
+        a.apply_fetch(crate::fetch::FetchEvent::Started, now());
+        fetch_error(&mut a, crate::github::GhError::LoginExpired);
+        spin(&mut a, 2);
+        let buf = draw(&a, 44, 14);
+        let t = text(&buf);
+        assert!(t.contains("✗ GitHub login expired."), "{t}");
+        assert!(t.contains("   ✗ No PR data yet.  Press r to retry."), "{t}");
+        assert!(!t.contains("looking up PRs"), "{t}");
+        assert!(!t.contains('░'), "{t}");
+        assert!(!t.contains('⠹'), "no spinner anywhere:\n{t}");
+        insta::assert_snapshot!(t);
+    }
+
+    #[test]
+    fn no_spinner_without_a_fetch() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut a = App::new(ViewKind::Workspace, FixedOffset::east_opt(0).unwrap());
+        a.set_own_pane("w4:p1".into()); // not in a checkout
+        a.apply_snapshot(
+            crate::herdr::parse_snapshot(include_str!("../../tests/fixtures/snapshot.json")),
             &mut crate::git::FixtureBranches::embedded(),
             &StateDir::new(tmp.path().to_path_buf()),
             now(),
         );
+        for width in [80, 44] {
+            let header = text_lines(&draw(&a, width, 14))[0].clone();
+            assert!(!header.contains("loading"), "{width}: {header}");
+        }
+    }
+
+    #[test]
+    fn herdr_down_ws_44() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut a = ws_app_in(tmp.path());
+        herdr_down(&mut a, tmp.path());
         let buf = draw(&a, 44, 30);
         let lines = text_lines(&buf);
         assert!(

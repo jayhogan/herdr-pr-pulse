@@ -124,13 +124,23 @@ pub(super) fn banner_lines(
     if has_fix {
         left.push('.');
     }
+    let right = if narrow { "r " } else { "r retry " };
+    let room = width.saturating_sub(dw(right) + 1);
     if let (false, true, Some(at)) = (narrow, screen.header.stale, screen.header.fetched_at) {
         let clock = at.with_timezone(&screen.clock).format("%H:%M");
         let age = ago::short(at, screen.now);
-        left.push_str(&format!(" Showing data from {clock} ({age} old)."));
+        // The longest wording that fits, so the data's age is never cut off.
+        let tails = [
+            format!(" Showing data from {clock} ({age} old)."),
+            format!(" Data from {clock} ({age} old)."),
+            format!(" ({age} old)"),
+        ];
+        let tail = tails
+            .iter()
+            .find(|t| dw(&left) + dw(t) <= room)
+            .unwrap_or(&tails[2]);
+        left.push_str(tail);
     }
-    let right = if narrow { "r " } else { "r retry " };
-    let room = width.saturating_sub(dw(right) + 1);
     let left = crate::ui::cells::fit(&left, room);
     let gap = width.saturating_sub(dw(&left) + dw(right));
     let mut out =
@@ -174,10 +184,24 @@ pub(super) fn loading_lines(
     let spin = screen.header.spinner;
     let spinner = theme::cyan().patch(theme::bold());
     let mut out = Vec::new();
+    // An error before any data: nothing is on its way until `r`.
+    let failed = screen.header.stale && !screen.header.fetching && p.repos.is_empty();
+    let no_data = || {
+        vec![
+            Span::styled("✗ ", theme::red_bold()),
+            Span::styled("No PR data yet.", theme::bold()),
+            Span::styled("  Press r to retry.", theme::dim()),
+        ]
+    };
     if screen.header.view == ViewKind::Workspace {
+        let (glyph, style) = if failed {
+            ("✗", theme::red_bold())
+        } else {
+            (spin, spinner)
+        };
         out.push(line(
             vec![
-                Span::styled(format!(" {spin} "), spinner),
+                Span::styled(format!(" {glyph} "), style),
                 Span::styled("Matching panes to PRs", theme::bold()),
             ],
             width,
@@ -203,6 +227,12 @@ pub(super) fn loading_lines(
             ],
         };
         out.push(line(panes, width));
+        if failed {
+            let mut l = vec![Span::raw("   ")];
+            l.extend(no_data());
+            out.push(line(l, width));
+            return out;
+        }
         let mut gh = "looking up PRs on GitHub".to_string();
         if !p.repos.is_empty() {
             gh.push_str(&format!(" · {}", repo_count(p)));
@@ -225,16 +255,10 @@ pub(super) fn loading_lines(
         return out;
     }
 
-    // An error before any data: nothing is on its way until `r`.
-    if screen.header.stale && !screen.header.fetching && p.repos.is_empty() {
-        out.push(line(
-            vec![
-                Span::styled("  ✗ ", theme::red_bold()),
-                Span::styled("No PR data yet.", theme::bold()),
-                Span::styled("  Press r to retry.", theme::dim()),
-            ],
-            width,
-        ));
+    if failed {
+        let mut l = vec![Span::raw("  ")];
+        l.extend(no_data());
+        out.push(line(l, width));
         return out;
     }
     let mut title = vec![
@@ -288,12 +312,20 @@ fn pane_lines(
     let mut used = 0;
     for (pane, branch, has_pr, agent) in panes {
         let (glyph, style) = theme::agent(agent.unwrap_or(AgentState::Unknown));
+        let flag = if !has_pr && !is_default_branch(branch) {
+            " (no PR)"
+        } else {
+            ""
+        };
+        // The branch gives way first, so the `(no PR)` flag stays readable.
+        let room = width.saturating_sub(3 + dw(glyph) + dw(pane) + 2 + dw(flag));
+        let branch = crate::ui::cells::fit(branch, room);
         let mut entry = vec![
             Span::styled(glyph, style),
             Span::styled(format!(" {pane} {branch}"), theme::dim()),
         ];
-        if !has_pr && !is_default_branch(branch) {
-            entry.push(Span::styled(" (no PR)", theme::yellow()));
+        if !flag.is_empty() {
+            entry.push(Span::styled(flag, theme::yellow()));
         }
         let w: usize = entry.iter().map(Span::width).sum();
         match lines.last_mut() {
@@ -314,7 +346,7 @@ fn pane_lines(
 }
 
 /// What an empty view says instead of a blank body (board 4).
-pub(super) fn empty_lines(info: &EmptyInfo, width: usize) -> Vec<Line<'static>> {
+pub(super) fn empty_lines(info: &EmptyInfo, herdr_down: bool, width: usize) -> Vec<Line<'static>> {
     let mut out = Vec::new();
     match info {
         EmptyInfo::Mine {
@@ -371,7 +403,15 @@ pub(super) fn empty_lines(info: &EmptyInfo, width: usize) -> Vec<Line<'static>> 
                 ],
                 width,
             ));
-            if panes.is_empty() {
+            if herdr_down {
+                out.push(line(
+                    vec![Span::styled(
+                        "   Agent panes unknown while herdr isn't responding.",
+                        theme::dim(),
+                    )],
+                    width,
+                ));
+            } else if panes.is_empty() {
                 out.push(line(
                     vec![Span::styled(
                         "   No agent panes in this workspace.",
