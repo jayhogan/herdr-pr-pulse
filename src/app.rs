@@ -343,9 +343,11 @@ impl App {
             .iter()
             .flat_map(|d| d.groups.iter().flat_map(|g| &g.layers))
             .collect();
+        // Only agent panes: the own pane is there just for the header's ⎇.
         let found: Vec<(String, Remembered)> = self
             .panes
             .iter()
+            .filter(|pane| pane.agent.is_some())
             .filter_map(|pane| {
                 // An open PR wins over an older merged/closed one on the same branch.
                 let pr = prs
@@ -361,19 +363,16 @@ impl App {
                 Some((pane.checkout_key.clone(), r))
             })
             .collect();
-        let live: BTreeSet<String> = snap
-            .workspaces
-            .iter()
-            .filter_map(|w| snap.checkout_key(&w.workspace_id))
-            .chain(self.panes.iter().map(|p| p.checkout_key.clone()))
-            .collect();
+        // A snapshot listing no workspaces at all says nothing about which are in use.
+        let live: Option<BTreeSet<String>> =
+            (!snap.workspaces.is_empty()).then(|| workspaces::live_checkouts(&snap, branches));
         let exists = self.path_exists;
         let change = |m: &mut Memory| {
             let mut changed = false;
             for (key, r) in &found {
                 changed |= m.remember(key, r.clone());
             }
-            changed | m.prune(Some(&live), exists)
+            changed | m.prune(live.as_ref(), exists)
         };
         match state.update(workspaces::FILE, change) {
             Ok(m) => self.memory = m,

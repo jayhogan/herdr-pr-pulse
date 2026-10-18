@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::app::AgentDot;
 use crate::git::{Branches, Checkout};
-use crate::herdr::{AgentState, Snapshot};
+use crate::herdr::{AgentState, Pane, Snapshot};
 use crate::stacks::Group;
 
 /// The state file holding [`Memory`].
@@ -115,11 +115,7 @@ pub fn pane_checkouts(
         if !has_agent && own != Some(pane.pane_id.as_str()) {
             continue;
         }
-        let cwd = if pane.foreground_cwd.is_empty() {
-            pane.cwd.as_str()
-        } else {
-            pane.foreground_cwd.as_str()
-        };
+        let cwd = pane_cwd(pane);
         if cwd.is_empty() {
             continue;
         }
@@ -140,11 +136,46 @@ pub fn pane_checkouts(
     out
 }
 
+/// Where a pane's foreground process runs, else its shell's cwd.
+fn pane_cwd(pane: &Pane) -> &str {
+    if pane.foreground_cwd.is_empty() {
+        &pane.cwd
+    } else {
+        &pane.foreground_cwd
+    }
+}
+
+/// Checkout keys some workspace still uses: each worktree's checkout path, and for a
+/// workspace without a worktree the repo root of every one of its panes (any pane, any
+/// branch, so an agent restarting or a detached HEAD does not drop its memory).
+pub fn live_checkouts(snap: &Snapshot, branches: &mut dyn Branches) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    for w in &snap.workspaces {
+        match snap.checkout_key(&w.workspace_id) {
+            Some(path) => {
+                out.insert(path);
+            }
+            None => {
+                let cwds: BTreeSet<&str> = snap
+                    .panes
+                    .iter()
+                    .filter(|p| p.workspace_id == w.workspace_id)
+                    .map(pane_cwd)
+                    .filter(|c| !c.is_empty())
+                    .collect();
+                out.extend(cwds.into_iter().filter_map(|c| branches.toplevel(c)));
+            }
+        }
+    }
+    out
+}
+
 /// The agent for each group (by key) and the layer its pane has checked out, if any.
 ///
 /// A pane belongs to a group when its branch is one of the group's head refs, or when its
-/// checkout remembers one of the group's PRs (it has moved to a side branch). Among several
-/// panes: one running an agent first, then the focused one, then one on a layer's branch.
+/// checkout remembers one of the group's PRs (it has moved to a side branch). Only panes
+/// running an agent count (never PR Pulse's own pane). Among several: one on a layer's
+/// branch first, then the focused one, then the first.
 pub fn stack_agents(
     groups: &[Group],
     panes: &[PaneCheckout],
@@ -154,6 +185,7 @@ pub fn stack_agents(
     for g in groups {
         let best = panes
             .iter()
+            .filter(|p| p.agent.is_some())
             .filter_map(|p| {
                 let on_layer = g
                     .layers
@@ -168,7 +200,7 @@ pub fn stack_agents(
             })
             // max_by_key keeps the last of equals; reverse so the first pane wins ties.
             .rev()
-            .max_by_key(|(p, on_layer)| (p.agent.is_some(), p.focused, on_layer.is_some()));
+            .max_by_key(|(p, on_layer)| (on_layer.is_some(), p.focused));
         if let Some((p, on_layer)) = best {
             let dot = AgentDot {
                 state: p.agent.unwrap_or(AgentState::Unknown),
@@ -331,6 +363,145 @@ mod tests {
             (dot.state, dot.pane_id.as_str(), *checked_out),
             (AgentState::Idle, "w1:p1", None)
         );
+    }
+
+    /// A Workspace-view app on the fixture PRs, seeing every path as present.
+    fn ws_app() -> crate::app::App {
+        use crate::app::{App, ViewKind};
+        let prs = model::parse_detail(include_str!("../tests/fixtures/detail.json")).unwrap();
+        let mut a = App::new(
+            ViewKind::Workspace,
+            chrono::FixedOffset::east_opt(0).unwrap(),
+        );
+        a.set_own_pane("w1:p2".into());
+        a.set_path_exists(|_| true);
+        a.set_prs(
+            prs,
+            &[],
+            &[],
+            "jayhogan",
+            "2026-10-17T14:32:08Z".parse().unwrap(),
+        );
+        a
+    }
+
+    fn state_with(m: Memory) -> (tempfile::TempDir, crate::store::StateDir) {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = crate::store::StateDir::new(tmp.path().to_path_buf());
+        state
+            .update(FILE, |x: &mut Memory| {
+                *x = m;
+                true
+            })
+            .unwrap();
+        (tmp, state)
+    }
+
+    #[test]
+    fn own_pane_is_never_a_stack_agent() {
+        // w1's agent is gone; only PR Pulse's own pane is on an audit branch.
+        let mut snap = snapshot();
+        snap.agents.retain(|a| a.pane_id != "w1:p1");
+        let gs = groups();
+        let panes = pane_checkouts(&snap, &mut FixtureBranches::embedded(), Some("w1:p2"));
+        assert!(panes.iter().any(|p| p.pane_id == "w1:p2"), "kept for ⎇");
+        assert!(!stack_agents(&gs, &panes, &memory()).contains_key(&audit_key(&gs)));
+
+        let (_tmp, state) = state_with(Memory::default());
+        let mut a = ws_app();
+        a.apply_snapshot(
+            Ok(snap),
+            &mut FixtureBranches::embedded(),
+            &state,
+            chrono::Utc::now(),
+        );
+        let m: Memory = state.load(FILE).unwrap();
+        assert!(m.ids_for("/work/heard-ts-audit").is_empty(), "{m:?}");
+        assert_eq!(
+            m.ids_for("/work/docket-thread"),
+            BTreeSet::from(["PR_412".into()])
+        );
+    }
+
+    /// Answers like the fixture, except that every checkout is on a detached HEAD.
+    struct Detached(FixtureBranches);
+    impl Branches for Detached {
+        fn checkout(&mut self, _cwd: &str) -> Option<Checkout> {
+            None
+        }
+        fn toplevel(&mut self, cwd: &str) -> Option<String> {
+            self.0.toplevel(cwd)
+        }
+    }
+
+    #[test]
+    fn worktreeless_memory_survives_detached_or_absent_agent() {
+        let mut snap = snapshot();
+        snap.workspaces[1].worktree = None; // docket: keyed by the pane's toplevel
+        let start = memory();
+        let (_tmp, state) = state_with(start.clone());
+        let mut a = ws_app();
+        // Mid-rebase: the agent pane is on a detached HEAD.
+        let mut detached = Detached(FixtureBranches::embedded());
+        a.apply_snapshot(Ok(snap.clone()), &mut detached, &state, chrono::Utc::now());
+        assert_eq!(state.load::<Memory>(FILE).unwrap(), start);
+        // The agent exited; a plain shell pane is still there.
+        snap.agents.retain(|x| x.pane_id != "w2:p1");
+        a.apply_snapshot(
+            Ok(snap.clone()),
+            &mut FixtureBranches::embedded(),
+            &state,
+            chrono::Utc::now(),
+        );
+        assert_eq!(state.load::<Memory>(FILE).unwrap(), start);
+        // The pane is closed too: nothing uses the path any more.
+        snap.panes.retain(|p| p.pane_id != "w2:p1");
+        a.apply_snapshot(
+            Ok(snap),
+            &mut FixtureBranches::embedded(),
+            &state,
+            chrono::Utc::now(),
+        );
+        let m: Memory = state.load(FILE).unwrap();
+        assert!(!m.by_checkout.contains_key("/work/docket-thread"));
+    }
+
+    #[test]
+    fn snapshot_without_workspaces_prunes_nothing() {
+        let start = memory();
+        let (_tmp, state) = state_with(start.clone());
+        let mut a = ws_app();
+        let empty = parse_snapshot(r#"{"result":{"snapshot":{}}}"#).unwrap();
+        a.apply_snapshot(
+            Ok(empty),
+            &mut FixtureBranches::embedded(),
+            &state,
+            chrono::Utc::now(),
+        );
+        assert_eq!(state.load::<Memory>(FILE).unwrap(), start);
+    }
+
+    #[test]
+    fn layer_branch_beats_focused_memory_match() {
+        let gs = groups();
+        let pane = |id: &str, branch: &str, focused: bool| PaneCheckout {
+            pane_id: id.into(),
+            workspace_id: id[..2].into(),
+            checkout_key: format!("/work/{id}"),
+            repo: "heard/heard-ts".into(),
+            branch: branch.into(),
+            agent: Some(AgentState::Working),
+            focused,
+        };
+        let panes = [
+            pane("w5:p1", "fix/skill-bug", true),
+            pane("w6:p1", "audit/consumer", false),
+        ];
+        let mut m = Memory::default();
+        m.remember("/work/w5:p1", rem(1287, "audit/kafka-producer"));
+        let agents = stack_agents(&gs, &panes, &m);
+        let (dot, checked_out) = &agents[&audit_key(&gs)];
+        assert_eq!((dot.pane_id.as_str(), *checked_out), ("w6:p1", Some(1291)));
     }
 
     #[test]

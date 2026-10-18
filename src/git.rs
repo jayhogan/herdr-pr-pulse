@@ -15,6 +15,8 @@ pub struct Checkout {
 
 pub trait Branches {
     fn checkout(&mut self, cwd: &str) -> Option<Checkout>;
+    /// The repo root containing `cwd`, whatever the branch (detached HEAD included).
+    fn toplevel(&mut self, cwd: &str) -> Option<String>;
 }
 
 /// Turns a GitHub remote URL (scp, https or ssh form) into `owner/name`.
@@ -53,6 +55,8 @@ fn git(cwd: &str, args: &[&str]) -> Option<String> {
 #[derive(Default)]
 pub struct GitBranches {
     stable: HashMap<String, Option<(String, String)>>,
+    /// Repo roots found by `toplevel` (failures are retried).
+    toplevels: HashMap<String, String>,
 }
 
 impl Branches for GitBranches {
@@ -72,6 +76,18 @@ impl Branches for GitBranches {
             branch,
             toplevel,
         })
+    }
+
+    fn toplevel(&mut self, cwd: &str) -> Option<String> {
+        if let Some(Some((_, top))) = self.stable.get(cwd) {
+            return Some(top.clone());
+        }
+        if let Some(top) = self.toplevels.get(cwd) {
+            return Some(top.clone());
+        }
+        let top = git(cwd, &["rev-parse", "--show-toplevel"])?;
+        self.toplevels.insert(cwd.to_string(), top.clone());
+        Some(top)
     }
 }
 
@@ -96,6 +112,10 @@ impl FixtureBranches {
 impl Branches for FixtureBranches {
     fn checkout(&mut self, cwd: &str) -> Option<Checkout> {
         self.map.get(cwd).cloned()
+    }
+
+    fn toplevel(&mut self, cwd: &str) -> Option<String> {
+        self.map.get(cwd).map(|c| c.toplevel.clone())
     }
 }
 
@@ -150,7 +170,7 @@ mod tests {
             Some(Checkout {
                 repo: "heard/docket".into(),
                 branch: "feat/x".into(),
-                toplevel: top
+                toplevel: top.clone()
             })
         );
         // Branch is re-read each call.
@@ -159,6 +179,10 @@ mod tests {
         // Detached HEAD has no branch.
         run(p, &["checkout", "--detach"]);
         assert_eq!(g.checkout(cwd), None);
+        // The repo root does not depend on the branch.
+        assert_eq!(g.toplevel(cwd).as_deref(), Some(top.as_str()));
+        let mut fresh = GitBranches::default();
+        assert_eq!(fresh.toplevel(cwd).as_deref(), Some(top.as_str()));
     }
 
     #[test]
@@ -178,5 +202,10 @@ mod tests {
             ("heard/docket", "thread-model/model")
         );
         assert_eq!(f.checkout("/nope"), None);
+        assert_eq!(
+            f.toplevel("/work/docket-thread").as_deref(),
+            Some("/work/docket-thread")
+        );
+        assert_eq!(f.toplevel("/nope"), None);
     }
 }
