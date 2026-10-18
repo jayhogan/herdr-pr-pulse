@@ -613,12 +613,17 @@ mod tests {
             let t = text(&draw(&stack_blocked_app(), width, 30));
             let lines: Vec<&str> = t.lines().collect();
             let at = |needle: &str| lines.iter().position(|l| l.contains(needle)).unwrap();
+            // Only layer 1 of 4 is ready, so the header must not read as a whole-stack merge.
             let header = if width >= 80 {
-                "◆ merge stack"
+                "mergeable through layer 1 of 4"
             } else {
-                "◆ stack 1/4"
+                "through L1 of 4"
             };
             assert!(t.contains(header), "{width}:\n{t}");
+            assert!(
+                !t.contains("merge stack") && !t.contains("◆ stack"),
+                "{width}:\n{t}"
+            );
             // Two-line rows at 44 keep the merge cell on the line after #1284.
             let row = lines[at("#1284")..at("#1287")].join("\n");
             assert!(row.contains("✓ stack ok"), "{width}: {row}");
@@ -673,6 +678,34 @@ mod tests {
                 let region = lines[line_of(&buf, "#1284")..line_of(&buf, "#1287")].join("\n");
                 insta::assert_snapshot!("drawer_44_stack_note", region);
             }
+        }
+    }
+
+    /// Every audit layer ready in order; GitHub still reports the bottom BLOCKED.
+    fn whole_stack_ready_app() -> App {
+        app_with(|prs| {
+            for p in prs.iter_mut() {
+                match p.number {
+                    1284 => p.merge = model::MergeState::Blocked,
+                    1287 | 1291 | 1295 => {
+                        p.ci = model::Ci::from_checks(Vec::new());
+                        p.approved = Some(true);
+                        p.changes_requested = false;
+                        p.is_draft = false;
+                        p.merge = model::MergeState::Clean;
+                        p.unresolved_threads = 0;
+                    }
+                    _ => {}
+                }
+            }
+        })
+    }
+
+    #[test]
+    fn whole_ready_stack_reads_merge_stack() {
+        for (width, header) in [(120, "◆ merge stack · 4 of 4"), (44, "◆ stack 4/4")] {
+            let t = text(&draw(&whole_stack_ready_app(), width, 30));
+            assert!(t.contains(header), "{width}:\n{t}");
         }
     }
 
