@@ -1,7 +1,10 @@
 //! Text for each cell of a PR row, at each density: CI, threads, review, merge, layer tree,
 //! plus the width-aware helpers every renderer shares.
 
+use chrono::{DateTime, Utc};
 use ratatui::style::Style;
+
+use crate::ago;
 use ratatui::text::Span;
 
 use crate::app::{GroupView, RowView};
@@ -179,10 +182,16 @@ pub(super) fn review(pr: &Pr, d: Density) -> Text {
     }
 }
 
-pub(super) fn merge(r: &RowView, d: Density) -> Text {
+pub(super) fn merge(r: &RowView, d: Density, now: DateTime<Utc>) -> Text {
     let pr = &r.pr;
     match pr.state {
-        PrState::Merged => return ("⊙ merged".into(), theme::dim()),
+        PrState::Merged => {
+            let t = match pr.closed_at {
+                Some(at) => format!("⊙ merged {} ago", ago::short(at, now)),
+                None => "⊙ merged".into(),
+            };
+            return (t, theme::dim());
+        }
         PrState::Closed => return ("✕ closed".into(), theme::dim()),
         PrState::Open => {}
     }

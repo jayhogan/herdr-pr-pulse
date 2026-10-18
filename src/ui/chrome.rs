@@ -3,7 +3,7 @@
 use ratatui::text::{Line, Span};
 
 use crate::ago;
-use crate::app::{Header, Scope, Screen, SortOrder, Summary, ViewKind};
+use crate::app::{Header, Scope, Screen, SortOrder, ViewKind};
 use crate::ui::cells::{cell, dw, fit, plural};
 use crate::ui::rows::Density::{self, *};
 use crate::ui::rows::{title_width, widths};
@@ -11,7 +11,7 @@ use crate::ui::theme;
 
 pub(super) fn top_lines(screen: &Screen, d: Density, width: usize) -> Vec<Line<'static>> {
     let mut out = vec![header_bar(&screen.header, screen, d, width)];
-    out.push(summary(&screen.summary, d));
+    out.push(summary(screen, d, width));
     if matches!(d, Wide | Medium) {
         out.push(Line::styled("─".repeat(width), theme::dim()));
         out.push(column_titles(d, width));
@@ -31,12 +31,13 @@ fn header_bar(h: &Header, screen: &Screen, d: Density, width: usize) -> Line<'st
         plural(h.prs, "PR", "PRs"),
         plural(h.stacks, "stack", "stacks")
     );
+    let branch = workspace_branch(h).map_or(String::new(), |b| format!(" · ⎇ {b}"));
     let left = match d {
         Wide => format!(
-            "│ {scope} · {counts} · {}",
+            "│ {scope} · {counts} · {}{branch}",
             plural(h.repos, "repo", "repos")
         ),
-        Medium => format!("│ {counts}"),
+        Medium => format!("│ {counts}{branch}"),
         Narrow | Tiny => String::new(),
     };
     let sort = match h.sort {
@@ -80,8 +81,8 @@ fn header_bar(h: &Header, screen: &Screen, d: Density, width: usize) -> Line<'st
     Line::from(spans).style(theme::bar())
 }
 
-fn summary(s: &Summary, d: Density) -> Line<'static> {
-    let c = &s.counts;
+fn summary(screen: &Screen, d: Density, width: usize) -> Line<'static> {
+    let c = &screen.summary.counts;
     let parts = [
         (
             c.urgent,
@@ -124,7 +125,21 @@ fn summary(s: &Summary, d: Density) -> Line<'static> {
         };
         spans.push(Span::styled(t, style));
     }
+    // Narrow Workspace view: `⎇ branch` right-aligned (board 2); wider ones put it in the bar.
+    if let (Some(b), Narrow | Tiny) = (workspace_branch(&screen.header), d) {
+        let used: usize = spans.iter().map(Span::width).sum();
+        let b = if d == Tiny { fit(&b, 12) } else { b };
+        let room = width.saturating_sub(used + 1);
+        let t = fit(&format!("⎇ {b} "), room);
+        spans.push(Span::raw(" ".repeat(width.saturating_sub(used + dw(&t)))));
+        spans.push(Span::styled(t, theme::dim()));
+    }
     Line::from(spans)
+}
+
+/// The header `⎇` branch: Workspace view only.
+fn workspace_branch(h: &Header) -> Option<String> {
+    h.branch.clone().filter(|_| h.view == ViewKind::Workspace)
 }
 
 fn column_titles(d: Density, width: usize) -> Line<'static> {
@@ -200,7 +215,10 @@ pub(super) fn footer(screen: &Screen, d: Density, width: usize) -> Vec<Line<'sta
             ]
         })
         .collect();
-    let hints = Line::from(spans);
+    let hints = match &screen.status {
+        Some(status) => Line::raw(fit(&format!(" {status}"), width)),
+        None => Line::from(spans),
+    };
     match d {
         Wide | Medium => vec![Line::styled("─".repeat(width), theme::dim()), hints],
         Narrow | Tiny => vec![hints],

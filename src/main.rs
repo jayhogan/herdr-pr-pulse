@@ -15,16 +15,16 @@ mod workspaces;
 
 use std::env;
 use std::io;
-use std::process::ExitCode;
+use std::process::{Command, ExitCode, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
 use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Local, Offset, Utc};
-use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
+use crossterm::event::{self, Event, KeyEventKind};
 use ratatui::DefaultTerminal;
 
-use crate::app::{App, ViewKind};
+use crate::app::{Action, App, ViewKind};
 use crate::fetch::{FetchEvent, FetchRequest, Poller};
 use crate::git::{FixtureBranches, GitBranches};
 use crate::github::GhCli;
@@ -204,16 +204,40 @@ impl Live {
     }
 }
 
-/// Returns true when the app should quit. Task 14 moves this into `App::handle_key`.
-fn handle_key(app: &mut App, code: KeyCode, modifiers: KeyModifiers) -> bool {
-    match code {
-        KeyCode::Char('q') => return true,
-        KeyCode::Char('c') if modifiers.contains(KeyModifiers::CONTROL) => return true,
-        KeyCode::Char('j') | KeyCode::Down => app.move_cursor(1),
-        KeyCode::Char('k') | KeyCode::Up => app.move_cursor(-1),
-        _ => {}
+/// Carries out a key's action; true when the app should quit. Fixtures mode (`live` is
+/// `None`) only says what it would do.
+fn run_action(app: &mut App, action: Action, live: Option<&mut Live>) -> bool {
+    match (action, live) {
+        (Action::Quit, _) => return true,
+        (Action::None, _) => {}
+        (Action::Refresh, Some(live)) => live.refresh(),
+        (Action::Refresh, None) => {}
+        (Action::Focus(pane), Some(_)) => {
+            if let Err(e) = herdr::focus_pane(&pane) {
+                app.set_status(e);
+            }
+        }
+        (Action::Focus(pane), None) => app.set_status(format!("fixtures: would focus {pane}")),
+        (Action::Open(url), Some(_)) => {
+            if let Err(e) = open_in_browser(&url) {
+                app.set_status(e);
+            }
+        }
+        (Action::Open(url), None) => app.set_status(format!("fixtures: would open {url}")),
     }
     false
+}
+
+/// `gh pr view <url> --web`, not waited on (the child is reaped when PR Pulse exits).
+fn open_in_browser(url: &str) -> Result<(), String> {
+    Command::new("gh")
+        .args(["pr", "view", url, "--web"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("could not run gh: {e}"))
 }
 
 fn event_loop(
@@ -234,12 +258,8 @@ fn event_loop(
             && let Event::Key(key) = event::read()?
             && key.kind == KeyEventKind::Press
         {
-            if key.code == KeyCode::Char('r')
-                && let Some(live) = live.as_deref_mut()
-            {
-                live.refresh();
-            }
-            if handle_key(app, key.code, key.modifiers) {
+            let action = app.handle_key(key);
+            if run_action(app, action, live.as_deref_mut()) {
                 return Ok(());
             }
         }
@@ -319,27 +339,24 @@ mod tests {
     }
 
     #[test]
-    fn keys_quit_and_move() {
-        let mut app = App::new(ViewKind::Mine, Utc::now().offset().fix());
+    fn fixtures_actions_only_set_status() {
+        let mut app = App::new(ViewKind::Workspace, Utc::now().offset().fix());
         load_fixtures(&mut app).unwrap();
-        assert!(handle_key(&mut app, KeyCode::Char('q'), KeyModifiers::NONE));
-        assert!(handle_key(
+        assert!(run_action(&mut app, Action::Quit, None));
+        assert!(!run_action(&mut app, Action::Focus("w1:p1".into()), None));
+        assert_eq!(
+            app.screen(Utc::now()).status.as_deref(),
+            Some("fixtures: would focus w1:p1")
+        );
+        assert!(!run_action(
             &mut app,
-            KeyCode::Char('c'),
-            KeyModifiers::CONTROL
+            Action::Open("https://x/1".into()),
+            None
         ));
-        assert!(!handle_key(
-            &mut app,
-            KeyCode::Char('c'),
-            KeyModifiers::NONE
-        ));
-        assert!(!handle_key(
-            &mut app,
-            KeyCode::Char('j'),
-            KeyModifiers::NONE
-        ));
-        assert_eq!(app.screen(Utc::now()).cursor, 1);
-        assert!(!handle_key(&mut app, KeyCode::Up, KeyModifiers::NONE));
-        assert_eq!(app.screen(Utc::now()).cursor, 0);
+        assert_eq!(
+            app.screen(Utc::now()).status.as_deref(),
+            Some("fixtures: would open https://x/1")
+        );
+        assert!(!run_action(&mut app, Action::Refresh, None));
     }
 }

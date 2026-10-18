@@ -4,6 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use chrono::{DateTime, FixedOffset, Utc};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::attention::{
     AgentState, Attention, Counts, Reason, count, first_blocker, level, mergeable_through,
@@ -20,6 +21,18 @@ use crate::workspaces::{self, Memory, PaneCheckout, Remembered};
 pub enum ViewKind {
     Workspace,
     Mine,
+}
+
+/// What the event loop must do after a key.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Action {
+    None,
+    Quit,
+    Refresh,
+    /// Focus this herdr pane (the stack's agent).
+    Focus(String),
+    /// Open this PR URL in the browser.
+    Open(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -129,6 +142,8 @@ pub struct Screen {
     pub help: bool,
     pub filter: Option<FilterState>,
     pub status: Option<String>,
+    /// The last herdr snapshot succeeded (else agent dots read `?`).
+    pub herdr_ok: bool,
     pub now: DateTime<Utc>,
     pub clock: FixedOffset,
 }
@@ -141,6 +156,12 @@ struct Data {
     fetched_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Selection {
+    Group(String),
+    Pr(String),
+}
+
 pub struct App {
     kind: ViewKind,
     clock: FixedOffset,
@@ -150,6 +171,11 @@ pub struct App {
     folds: BTreeSet<String>,
     /// PR Pulse's own pane, for `⎇` and so a Workspace copy remembers its checkout.
     own_pane: Option<String>,
+    /// The own pane's checkout key from the last good snapshot: whose memory the Workspace
+    /// view shows. Kept while herdr is unreachable.
+    own_checkout: Option<String>,
+    /// One-line message shown in place of the key hints until the next key.
+    status: Option<String>,
     /// The last herdr snapshot succeeded. When false there are no agents and memory is
     /// not pruned.
     herdr_ok: bool,
@@ -196,6 +222,8 @@ impl App {
             cursor: 0,
             folds: BTreeSet::new(),
             own_pane: None,
+            own_checkout: None,
+            status: None,
             herdr_ok: false,
             panes: Vec::new(),
             memory: Memory::default(),
@@ -207,6 +235,122 @@ impl App {
             banner: None,
             progress: LoadProgress::default(),
         }
+    }
+
+    /// Applies a key press. Every key clears the status line first.
+    pub fn handle_key(&mut self, key: KeyEvent) -> Action {
+        self.status = None;
+        match key.code {
+            KeyCode::Char('q') => return Action::Quit,
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                return Action::Quit;
+            }
+            KeyCode::Char('j') | KeyCode::Down => self.move_cursor(1),
+            KeyCode::Char('k') | KeyCode::Up => self.move_cursor(-1),
+            KeyCode::Char('r') => return Action::Refresh,
+            KeyCode::Char('s') if self.kind == ViewKind::Mine => self.cycle_scope(),
+            KeyCode::Char('S') => self.cycle_sort(),
+            KeyCode::Enter => return self.jump(),
+            KeyCode::Char('o') => {
+                if let Some(pr) = self.selected_pr() {
+                    return Action::Open(pr.url);
+                }
+            }
+            _ => {}
+        }
+        Action::None
+    }
+
+    /// ⏎: focus the selected stack's agent pane (spec §8).
+    fn jump(&mut self) -> Action {
+        if !self.herdr_ok {
+            self.status = Some("herdr unreachable".into());
+            return Action::None;
+        }
+        match self.selected_group().and_then(|g| g.agent) {
+            Some(dot) => Action::Focus(dot.pane_id),
+            None => {
+                self.status = Some("no agent pane for this stack".into());
+                Action::None
+            }
+        }
+    }
+
+    /// A one-line message in place of the key hints until the next key.
+    pub fn set_status(&mut self, status: String) {
+        self.status = Some(status);
+    }
+
+    /// The group under the cursor (its header or one of its rows) and the row, if any.
+    fn selected(&self) -> Option<(GroupView, Option<RowView>)> {
+        let screen = self.screen(self.data_now());
+        let Body::Groups(gs) = screen.body else {
+            return None;
+        };
+        let mut i = 0;
+        for g in gs {
+            if i == screen.cursor {
+                return Some((g, None));
+            }
+            i += 1;
+            let rows = if g.folded { 0 } else { g.rows.len() };
+            if screen.cursor < i + rows {
+                let row = g.rows[screen.cursor - i].clone();
+                return Some((g, Some(row)));
+            }
+            i += rows;
+        }
+        None
+    }
+
+    pub fn selected_group(&self) -> Option<GroupView> {
+        self.selected().map(|(g, _)| g)
+    }
+
+    /// The PR under the cursor; on a group header, the stack's first row.
+    pub fn selected_pr(&self) -> Option<Pr> {
+        let (g, row) = self.selected()?;
+        row.or_else(|| g.rows.into_iter().next()).map(|r| r.pr)
+    }
+
+    /// What the cursor is on, to find it again after the rows change.
+    fn selection(&self) -> Option<Selection> {
+        let (g, row) = self.selected()?;
+        Some(match row {
+            Some(r) => Selection::Pr(r.pr.id),
+            None => Selection::Group(g.key),
+        })
+    }
+
+    /// Puts the cursor back on `sel`; if it is gone, keeps the index (clamped on draw).
+    fn restore(&mut self, sel: Option<Selection>) {
+        let Some(sel) = sel else { return };
+        let Body::Groups(gs) = self.screen(self.data_now()).body else {
+            return;
+        };
+        let mut i = 0;
+        for g in gs {
+            if sel == Selection::Group(g.key.clone()) {
+                self.cursor = i;
+                return;
+            }
+            i += 1;
+            if g.folded {
+                continue;
+            }
+            for r in &g.rows {
+                if sel == Selection::Pr(r.pr.id.clone()) {
+                    self.cursor = i;
+                    return;
+                }
+                i += 1;
+            }
+        }
+    }
+
+    /// A stable "now" for cursor bookkeeping (only the sort's fallback uses it).
+    fn data_now(&self) -> DateTime<Utc> {
+        self.data.as_ref().map(|d| d.fetched_at).unwrap_or_default()
     }
 
     pub fn kind(&self) -> ViewKind {
@@ -221,6 +365,7 @@ impl App {
         viewer: &str,
         fetched_at: DateTime<Utc>,
     ) {
+        let sel = self.selection();
         self.data = Some(Data {
             groups: stacks::group(&prs),
             authored: authored.iter().cloned().collect(),
@@ -229,6 +374,7 @@ impl App {
             fetched_at,
         });
         self.refresh_agents();
+        self.restore(sel);
     }
 
     pub fn apply_fetch(&mut self, ev: FetchEvent, now: DateTime<Utc>) {
@@ -291,8 +437,7 @@ impl App {
 
     /// Moves the cursor by `delta` selectable rows, clamped to the first and last.
     pub fn move_cursor(&mut self, delta: isize) {
-        let now = self.data.as_ref().map(|d| d.fetched_at).unwrap_or_default();
-        let last = match self.screen(now).body {
+        let last = match self.screen(self.data_now()).body {
             Body::Groups(gs) => gs
                 .iter()
                 .map(|g| 1 + if g.folded { 0 } else { g.rows.len() })
@@ -323,6 +468,18 @@ impl App {
         state: &StateDir,
         _now: DateTime<Utc>,
     ) {
+        let sel = self.selection();
+        self.read_snapshot(snap, branches, state);
+        self.refresh_agents();
+        self.restore(sel);
+    }
+
+    fn read_snapshot(
+        &mut self,
+        snap: Result<Snapshot, String>,
+        branches: &mut dyn Branches,
+        state: &StateDir,
+    ) {
         let snap = match snap {
             Ok(s) => s,
             Err(_) => {
@@ -331,12 +488,14 @@ impl App {
                 if let Ok(m) = state.load(workspaces::FILE) {
                     self.memory = m;
                 }
-                self.refresh_agents();
                 return;
             }
         };
         self.herdr_ok = true;
         self.panes = workspaces::pane_checkouts(&snap, branches, self.own_pane.as_deref());
+        if let Some(own) = self.own_pane() {
+            self.own_checkout = Some(own.checkout_key.clone());
+        }
 
         let prs: Vec<&Pr> = self
             .data
@@ -381,7 +540,6 @@ impl App {
                 change(&mut self.memory);
             }
         }
-        self.refresh_agents();
     }
 
     fn refresh_agents(&mut self) {
@@ -455,13 +613,40 @@ impl App {
         }
     }
 
-    /// The branch PR Pulse's own pane has checked out (header `⎇`).
-    fn own_branch(&self) -> Option<String> {
+    fn own_pane(&self) -> Option<&PaneCheckout> {
         let own = self.own_pane.as_deref()?;
-        self.panes
+        self.panes.iter().find(|p| p.pane_id == own)
+    }
+
+    /// Header `⎇`: the focused pane's branch when that pane is in this workspace, else the
+    /// branch PR Pulse's own pane has checked out.
+    fn header_branch(&self) -> Option<String> {
+        let own = self.own_pane()?;
+        let focused = self
+            .panes
             .iter()
-            .find(|p| p.pane_id == own)
-            .map(|p| p.branch.clone())
+            .find(|p| p.focused && p.workspace_id == own.workspace_id);
+        Some(focused.unwrap_or(own).branch.clone())
+    }
+
+    /// Whether the view lists group `g`: Mine by scope, Workspace by this checkout's memory
+    /// (or the branch PR Pulse's pane has checked out right now).
+    fn shows(&self, d: &Data, g: &Group) -> bool {
+        match self.kind {
+            ViewKind::Mine => g.layers.iter().any(|p| self.in_scope(d, &p.id)),
+            ViewKind::Workspace => {
+                let ids = self
+                    .own_checkout
+                    .as_deref()
+                    .map(|k| self.memory.ids_for(k))
+                    .unwrap_or_default();
+                let own = self.own_pane();
+                g.layers.iter().any(|p| {
+                    ids.contains(&p.id)
+                        || own.is_some_and(|o| o.repo == p.repo && o.branch == p.head_ref)
+                })
+            }
+        }
     }
 
     pub fn screen(&self, now: DateTime<Utc>) -> Screen {
@@ -475,7 +660,7 @@ impl App {
             fetched_at: None,
             fetching: self.fetching,
             stale: self.stale,
-            branch: self.own_branch(),
+            branch: self.header_branch(),
         };
         let mut counts = Counts::default();
         let body = match &self.data {
@@ -485,7 +670,7 @@ impl App {
                 let mut shown: Vec<(GroupView, DateTime<Utc>)> = d
                     .groups
                     .iter()
-                    .filter(|g| g.layers.iter().any(|p| self.in_scope(d, &p.id)))
+                    .filter(|g| self.shows(d, g))
                     .map(|g| {
                         let updated = g.layers.iter().map(|p| p.updated_at).max();
                         (self.group_view(d, g), updated.unwrap_or(now))
@@ -537,7 +722,8 @@ impl App {
             drawer_open: false,
             help: false,
             filter: None,
-            status: None,
+            status: self.status.clone(),
+            herdr_ok: self.herdr_ok,
             now,
             clock: self.clock,
         }
@@ -548,6 +734,7 @@ impl App {
 mod tests {
     use super::*;
     use crate::model;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     fn now() -> DateTime<Utc> {
         "2026-10-17T14:32:26Z".parse().unwrap()
@@ -820,6 +1007,217 @@ mod tests {
         assert_eq!(g.agent, None);
         assert!(g.rows.iter().all(|r| r.agent.is_none() && !r.checked_out));
         assert_eq!(g.rank, Attention::NeedsYou);
+    }
+
+    fn key(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::NONE)
+    }
+
+    /// The Workspace copy in the audit workspace (own pane w1:p2), memory from the fixture.
+    fn ws_app(dir: &Path) -> App {
+        let state = &StateDir::new(dir.to_path_buf());
+        let base = app();
+        let mut a = App::new(ViewKind::Workspace, FixedOffset::east_opt(0).unwrap());
+        a.data = base.data;
+        std::fs::write(
+            dir.join(workspaces::FILE),
+            include_str!("../tests/fixtures/workspaces.json"),
+        )
+        .unwrap();
+        a.set_own_pane("w1:p2".into());
+        a.set_path_exists(|_| true);
+        let snap = crate::herdr::parse_snapshot(include_str!("../tests/fixtures/snapshot.json"));
+        a.apply_snapshot(
+            snap,
+            &mut crate::git::FixtureBranches::embedded(),
+            state,
+            now(),
+        );
+        a
+    }
+
+    /// Moves the cursor down until it sits on PR `number`.
+    fn select(a: &mut App, number: u32) {
+        a.cursor = 0;
+        for _ in 0..50 {
+            if a.selected_pr().map(|p| p.number) == Some(number) {
+                return;
+            }
+            a.handle_key(key(KeyCode::Char('j')));
+        }
+        panic!("#{number} not selectable");
+    }
+
+    #[test]
+    fn keys_quit_move_and_refresh() {
+        let mut a = app();
+        assert_eq!(a.handle_key(key(KeyCode::Char('q'))), Action::Quit);
+        let ctrl_c = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
+        assert_eq!(a.handle_key(ctrl_c), Action::Quit);
+        assert_eq!(a.handle_key(key(KeyCode::Char('c'))), Action::None);
+        assert_eq!(a.handle_key(key(KeyCode::Char('j'))), Action::None);
+        assert_eq!(a.screen(now()).cursor, 1);
+        a.handle_key(key(KeyCode::Down));
+        a.handle_key(key(KeyCode::Up));
+        a.handle_key(key(KeyCode::Char('k')));
+        assert_eq!(a.screen(now()).cursor, 0);
+        assert_eq!(a.handle_key(key(KeyCode::Char('r'))), Action::Refresh);
+        a.handle_key(key(KeyCode::Char('s')));
+        assert_eq!(a.screen(now()).header.scope, Scope::Authored);
+        a.handle_key(key(KeyCode::Char('S')));
+        assert_eq!(a.screen(now()).header.sort, SortOrder::Updated);
+    }
+
+    #[test]
+    fn scope_key_ignored_in_workspace() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut a = ws_app(tmp.path());
+        a.handle_key(key(KeyCode::Char('s')));
+        assert_eq!(a.screen(now()).header.scope, Scope::Both);
+    }
+
+    #[test]
+    fn enter_focuses_stack_agent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut a = app();
+        with_agents(&mut a, &StateDir::new(tmp.path().to_path_buf()));
+        select(&mut a, 1291);
+        assert_eq!(
+            a.handle_key(key(KeyCode::Enter)),
+            Action::Focus("w1:p1".into())
+        );
+        // The group header jumps too.
+        a.cursor = 0;
+        assert_eq!(
+            a.handle_key(key(KeyCode::Enter)),
+            Action::Focus("w1:p1".into())
+        );
+    }
+
+    #[test]
+    fn enter_without_agent_sets_status() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut a = app();
+        with_agents(&mut a, &StateDir::new(tmp.path().to_path_buf()));
+        select(&mut a, 1279);
+        assert_eq!(a.handle_key(key(KeyCode::Enter)), Action::None);
+        assert_eq!(
+            a.screen(now()).status.as_deref(),
+            Some("no agent pane for this stack")
+        );
+        // Any other key clears it.
+        a.handle_key(key(KeyCode::Char('k')));
+        assert_eq!(a.screen(now()).status, None);
+    }
+
+    #[test]
+    fn enter_with_herdr_unreachable_sets_status() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = StateDir::new(tmp.path().to_path_buf());
+        let mut a = app();
+        with_agents(&mut a, &state);
+        a.apply_snapshot(
+            Err("herdr not running".into()),
+            &mut crate::git::FixtureBranches::embedded(),
+            &state,
+            now(),
+        );
+        select(&mut a, 1291);
+        assert_eq!(a.handle_key(key(KeyCode::Enter)), Action::None);
+        let s = a.screen(now());
+        assert_eq!(s.status.as_deref(), Some("herdr unreachable"));
+        assert!(!s.herdr_ok);
+    }
+
+    #[test]
+    fn o_opens_selected_pr() {
+        let mut a = app();
+        select(&mut a, 412);
+        assert_eq!(
+            a.handle_key(key(KeyCode::Char('o'))),
+            Action::Open("https://github.com/heard/docket/pull/412".into())
+        );
+    }
+
+    #[test]
+    fn workspace_shows_remembered_stacks_with_merged_layers() {
+        let tmp = tempfile::tempdir().unwrap();
+        let a = ws_app(tmp.path());
+        let s = a.screen(now());
+        let Body::Groups(gs) = &s.body else { panic!() };
+        let nums: Vec<Vec<u32>> = gs
+            .iter()
+            .map(|g| g.rows.iter().map(|r| r.pr.number).collect())
+            .collect();
+        assert_eq!(nums, [vec![1284, 1287, 1291, 1295], vec![1270]]);
+        assert_eq!(s.header.branch.as_deref(), Some("audit/kafka-producer"));
+        assert_eq!(s.header.prs, 4);
+    }
+
+    #[test]
+    fn merged_row_has_no_attention() {
+        let tmp = tempfile::tempdir().unwrap();
+        let a = ws_app(tmp.path());
+        let s = a.screen(now());
+        let Body::Groups(gs) = &s.body else { panic!() };
+        let row = gs
+            .iter()
+            .flat_map(|g| &g.rows)
+            .find(|r| r.pr.number == 1270)
+            .unwrap();
+        assert_eq!(row.attention, None);
+        assert_eq!(row.layer, 0);
+        let c = &s.summary.counts;
+        assert_eq!(
+            c.urgent + c.needs_you + c.nudge + c.ready + c.waiting,
+            4,
+            "{c:?}"
+        );
+    }
+
+    #[test]
+    fn cursor_follows_pr_across_refresh() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = StateDir::new(tmp.path().to_path_buf());
+        let mut a = app();
+        select(&mut a, 412);
+        // Without agents the audit stack drops to NeedsYou; it was first, so thread-model
+        // (updated later) may move. The cursor must stay on #412 either way.
+        let mut cache = good_cache();
+        for p in &mut cache.prs {
+            if p.number == 1279 {
+                p.changes_requested = true; // standalone #1279 now ranks above thread-model
+                p.updated_at = "2026-10-17T14:31:00Z".parse().unwrap();
+            }
+        }
+        a.apply_fetch(FetchEvent::Done(cache), now());
+        assert_eq!(a.selected_pr().map(|p| p.number), Some(412));
+        with_agents(&mut a, &state);
+        assert_eq!(a.selected_pr().map(|p| p.number), Some(412));
+
+        // A group header stays on its group.
+        let key = audit_key(&a);
+        a.cursor = 0;
+        while a.selected_group().map(|g| g.key) != Some(key.clone()) {
+            a.handle_key(self::key(KeyCode::Char('j')));
+        }
+        a.apply_snapshot(
+            Err("herdr not running".into()),
+            &mut crate::git::FixtureBranches::embedded(),
+            &state,
+            now(),
+        );
+        assert_eq!(a.selected_group().map(|g| g.key), Some(key));
+
+        // A PR that disappears leaves the cursor clamped.
+        select(&mut a, 1302);
+        let mut cache = good_cache();
+        cache.prs.retain(|p| p.number != 1302);
+        a.apply_fetch(FetchEvent::Done(cache), now());
+        let s = a.screen(now());
+        let Body::Groups(gs) = &s.body else { panic!() };
+        let selectable: usize = gs.iter().map(|g| 1 + g.rows.len()).sum();
+        assert_eq!(s.cursor, selectable - 1);
     }
 
     #[test]

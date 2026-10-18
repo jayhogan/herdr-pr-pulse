@@ -49,6 +49,43 @@ mod tests {
         a
     }
 
+    /// The Workspace copy in the audit workspace (own pane w1:p2), memory seeded from the
+    /// fixture, cursor on #1287 as on board 2.
+    fn ws_app() -> App {
+        ws_app_in(tempfile::tempdir().unwrap().path())
+    }
+
+    /// `ws_app` with its state (memory) in `dir`.
+    fn ws_app_in(dir: &std::path::Path) -> App {
+        let prs = model::parse_detail(include_str!("../../tests/fixtures/detail.json")).unwrap();
+        let s = model::parse_search(include_str!("../../tests/fixtures/search.json")).unwrap();
+        let ids = |h: &[model::SearchHit]| h.iter().map(|x| x.id.clone()).collect::<Vec<_>>();
+        let mut a = App::new(ViewKind::Workspace, FixedOffset::east_opt(0).unwrap());
+        a.set_prs(
+            prs,
+            &ids(&s.authored),
+            &ids(&s.assigned),
+            &s.viewer,
+            "2026-10-17T14:32:08Z".parse().unwrap(),
+        );
+        std::fs::write(
+            dir.join(crate::workspaces::FILE),
+            include_str!("../../tests/fixtures/workspaces.json"),
+        )
+        .unwrap();
+        a.set_own_pane("w1:p2".into());
+        a.set_path_exists(|_| true);
+        let snap = crate::herdr::parse_snapshot(include_str!("../../tests/fixtures/snapshot.json"));
+        a.apply_snapshot(
+            snap,
+            &mut crate::git::FixtureBranches::embedded(),
+            &StateDir::new(dir.to_path_buf()),
+            now(),
+        );
+        a.move_cursor(2);
+        a
+    }
+
     /// The fixture app with the cursor on #1287, as on boards 1 and 3.
     fn app() -> App {
         let mut a = app_with(|_| {});
@@ -160,6 +197,101 @@ mod tests {
     #[test]
     fn mine_34() {
         insta::assert_snapshot!(text(&draw(&app(), 34, 30)));
+    }
+
+    #[test]
+    fn workspace_120() {
+        insta::assert_snapshot!(text(&draw(&ws_app(), 120, 30)));
+    }
+
+    #[test]
+    fn workspace_80() {
+        insta::assert_snapshot!(text(&draw(&ws_app(), 80, 30)));
+    }
+
+    #[test]
+    fn workspace_44() {
+        insta::assert_snapshot!(text(&draw(&ws_app(), 44, 30)));
+    }
+
+    #[test]
+    fn workspace_34() {
+        insta::assert_snapshot!(text(&draw(&ws_app(), 34, 30)));
+    }
+
+    #[test]
+    fn workspace_marks_checked_out_row_only() {
+        for width in [120, 80, 44, 34] {
+            let buf = draw(&ws_app(), width, 30);
+            let lines = text_lines(&buf);
+            let marked: Vec<&String> = lines.iter().filter(|l| l.contains('⎇')).collect();
+            // The summary (narrow) or header bar (wide) shows the branch; one row has the mark.
+            assert_eq!(marked.len(), 2, "{width}:\n{}", text(&buf));
+            assert!(lines[line_of(&buf, "#1287")].contains("⎇"), "{width}");
+            assert!(lines[line_of(&buf, "#1287")].contains("○"), "{width}");
+            let merged = &lines[line_of(&buf, "#1270")..];
+            assert!(
+                merged.iter().take(2).any(|l| l.contains("⊙ merged 2d ago")),
+                "{width}:\n{}",
+                text(&buf)
+            );
+        }
+    }
+
+    #[test]
+    fn merged_row_is_dim() {
+        for width in [120, 44] {
+            let buf = draw(&ws_app(), width, 30);
+            let y = line_of(&buf, "#1270") as u16;
+            for x in 0..width {
+                let c = &buf[(x, y)];
+                if c.symbol().trim().is_empty() {
+                    continue;
+                }
+                assert_eq!(c.fg, Color::DarkGray, "{width}: cell {x} '{}'", c.symbol());
+            }
+        }
+    }
+
+    #[test]
+    fn mine_dot_in_header_not_row() {
+        let buf = draw(&app(), 120, 30);
+        let lines = text_lines(&buf);
+        assert!(lines[line_of(&buf, "· audit")].contains("○"));
+        assert!(!lines[line_of(&buf, "#1287")].contains("○"));
+        assert!(!text(&buf).contains('⎇'));
+    }
+
+    #[test]
+    fn herdr_unreachable_shows_question_mark() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut a = ws_app_in(tmp.path());
+        a.apply_snapshot(
+            Err("herdr not running".into()),
+            &mut crate::git::FixtureBranches::embedded(),
+            &StateDir::new(tmp.path().to_path_buf()),
+            now(),
+        );
+        for width in [120, 44] {
+            let buf = draw(&a, width, 30);
+            let lines = text_lines(&buf);
+            let header = &lines[line_of(&buf, "audit")];
+            assert!(header.contains('?'), "{width}: {header}");
+        }
+    }
+
+    #[test]
+    fn status_line_replaces_hints() {
+        let mut a = app();
+        a.set_status("no agent pane for this stack".into());
+        for width in [120, 44] {
+            let buf = draw(&a, width, 30);
+            let last = text_lines(&buf).pop().unwrap();
+            assert!(
+                last.contains("no agent pane for this stack"),
+                "{width}: {last}"
+            );
+        }
     }
 
     #[test]
