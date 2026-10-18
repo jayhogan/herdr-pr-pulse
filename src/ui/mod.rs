@@ -1016,6 +1016,25 @@ mod tests {
         assert_eq!(a.screen(now()).status.as_deref(), Some("herdr unreachable"));
     }
 
+    /// Spec §8: the agent dot shows once per stack, so while herdr is down the `?` takes
+    /// the dot's place on the stack header only (which layer is checked out is unknown).
+    #[test]
+    fn herdr_down_marks_each_stack_once() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut a = ws_app_in(tmp.path());
+        herdr_down(&mut a, tmp.path());
+        for width in [80, 44, 34] {
+            let lines = text_lines(&draw(&a, width, 30));
+            let rows: Vec<&String> = lines.iter().filter(|l| l.contains(" #1")).collect();
+            assert!(!rows.is_empty(), "{width}");
+            assert!(rows.iter().all(|l| !l.contains(" ?")), "{width}: {rows:#?}");
+            let headers = lines
+                .iter()
+                .filter(|l| l.starts_with("▾ ") && l.contains(" ?"));
+            assert_eq!(headers.count(), 2, "{width}: {lines:#?}");
+        }
+    }
+
     #[test]
     fn workspace_herdr_down_at_startup_explains() {
         let tmp = tempfile::tempdir().unwrap();

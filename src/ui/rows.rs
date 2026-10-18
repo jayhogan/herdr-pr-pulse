@@ -405,7 +405,8 @@ fn row_lines(
         merge(r, d, screen.now),
     );
     let closed = pr.state != PrState::Open;
-    // Workspace view: `⎇` and the agent dot after the title on the checked-out layer.
+    // Workspace view: `⎇` and the agent dot after the title on the checked-out layer. With
+    // herdr unreachable that layer is unknown: the stack header's `?` stands for the stack.
     let mark: Vec<Span<'static>> = match &r.agent {
         Some(dot) if screen.header.view == ViewKind::Workspace && r.checked_out => {
             let (glyph, style) = theme::agent(dot.state);
@@ -413,13 +414,6 @@ fn row_lines(
                 Span::styled("⎇ ", theme::dim()),
                 Span::styled(format!("{glyph} "), style),
             ]
-        }
-        // herdr unreachable: every open layer's agent is unknown.
-        None if screen.header.view == ViewKind::Workspace
-            && screen.herdr_down
-            && pr.state == PrState::Open =>
-        {
-            vec![Span::styled("? ", theme::dim())]
         }
         _ => Vec::new(),
     };
