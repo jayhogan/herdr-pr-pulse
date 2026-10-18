@@ -365,13 +365,14 @@ fn merge_state(s: Option<&str>) -> MergeState {
     }
 }
 
-/// Union of latest reviews, pending requests and unresolved-thread authors.
-/// A review's state wins over a request. Sorted humans first, then by urgency
+/// Union of latest reviews, pending requests and unresolved-thread authors, leaving out the
+/// PR's `author` (their replies are not reviews). A review's state wins over a request. Sorted humans first, then by urgency
 /// (changes requested, pending, commented, approved); stable within a rank.
 fn build_reviewers(
     reviews: Vec<RawReview>,
     requests: Vec<RawRequest>,
     threads: &[RawThread],
+    author: &str,
 ) -> Vec<Reviewer> {
     let mut out: Vec<Reviewer> = Vec::new();
     let new = |login: String, is_bot, state, at| Reviewer {
@@ -432,6 +433,7 @@ fn build_reviewers(
         ReviewState::Commented => 2,
         ReviewState::Approved => 3,
     };
+    out.retain(|r| r.login != author);
     out.sort_by_key(|r| (r.is_bot, rank(r.state)));
     out
 }
@@ -447,10 +449,15 @@ fn convert_pr(raw: RawPr) -> Pr {
         .collect();
     let threads = nodes_of(raw.review_threads);
     let unresolved_threads = threads.iter().filter(|t| !t.is_resolved).count() as u32;
+    let author = raw
+        .author
+        .map(|a| a.login)
+        .unwrap_or_else(|| "ghost".into());
     let reviewers = build_reviewers(
         nodes_of(raw.latest_reviews),
         nodes_of(raw.review_requests),
         &threads,
+        &author,
     );
     let decision = raw.review_decision.as_deref();
     let changes_requested = decision == Some("CHANGES_REQUESTED")
@@ -477,10 +484,7 @@ fn convert_pr(raw: RawPr) -> Pr {
         number: raw.number,
         title: raw.title,
         url: raw.url,
-        author: raw
-            .author
-            .map(|a| a.login)
-            .unwrap_or_else(|| "ghost".into()),
+        author,
         assignees: nodes_of(raw.assignees)
             .into_iter()
             .map(|a| a.login)
@@ -636,6 +640,30 @@ mod tests {
                 ("claude[bot]", ReviewState::Commented, 0, true),
             ]
         );
+    }
+
+    /// The author's own replies (a COMMENTED latest review, threads they started) do not
+    /// make them a reviewer; their unresolved threads still count on the PR.
+    #[test]
+    fn author_is_never_a_reviewer() {
+        let mut v: Value = serde_json::from_str(DETAIL).unwrap();
+        let me = serde_json::json!({"__typename": "User", "login": "jayhogan"});
+        let p1 = &mut v["data"]["p1"];
+        p1["latestReviews"]["nodes"].as_array_mut().unwrap().push(serde_json::json!(
+            {"author": me, "state": "COMMENTED", "submittedAt": "2026-10-17T14:22:00Z"}
+        ));
+        p1["reviewThreads"]["nodes"].as_array_mut().unwrap().push(serde_json::json!(
+            {"comments": {"nodes": [{"author": me}]}, "isResolved": false}
+        ));
+        v["data"]["p3"]["latestReviews"]["nodes"] = serde_json::json!([
+            {"author": me, "state": "COMMENTED", "submittedAt": "2026-10-17T14:22:00Z"}
+        ]);
+        let prs = parse_detail(&v.to_string()).unwrap();
+        let p = pr(&prs, 1287);
+        let logins: Vec<&str> = p.reviewers.iter().map(|r| r.login.as_str()).collect();
+        assert_eq!(logins, ["art", "kayla", "claude[bot]"]);
+        assert_eq!(p.unresolved_threads, 4);
+        assert!(pr(&prs, 1295).reviewers.is_empty());
     }
 
     #[test]
