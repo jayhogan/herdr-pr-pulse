@@ -3,6 +3,7 @@
 mod ago;
 mod app;
 mod attention;
+mod changes;
 mod fetch;
 mod git;
 mod github;
