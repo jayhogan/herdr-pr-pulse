@@ -101,8 +101,10 @@ impl Gh for GhCli {
 }
 
 /// Combines the stdin write result with gh's exit status. A non-zero exit is classified from
-/// stderr (it is the real cause even when the write hit a broken pipe); a broken pipe on a
-/// successful exit is harmless; any other write failure is reported on its own.
+/// stderr (it is the real cause even when the write hit a broken pipe), unless stdout still
+/// carries a `data` object: `gh api graphql` exits 1 whenever the body has `errors`, even when
+/// only one alias failed, so that body goes on to the SAML check and the parser. A broken
+/// pipe on a successful exit is harmless; any other write failure is reported on its own.
 fn finish(
     written: std::io::Result<()>,
     success: bool,
@@ -110,7 +112,12 @@ fn finish(
     stderr: &str,
 ) -> Result<String, GhError> {
     if !success {
-        return Err(classify(stderr, None));
+        let partial = serde_json::from_str::<Value>(stdout).is_ok_and(|v| v["data"].is_object());
+        return if partial {
+            Ok(stdout.to_string())
+        } else {
+            Err(classify(stderr, None))
+        };
     }
     match written {
         Err(e) if e.kind() != ErrorKind::BrokenPipe => {
@@ -403,6 +410,40 @@ mod tests {
         let other = Err(std::io::Error::from(ErrorKind::PermissionDenied));
         assert!(
             matches!(finish(other, true, "ok", ""), Err(GhError::Other(m)) if m.contains("send request"))
+        );
+    }
+
+    /// `gh api graphql` exits 1 whenever the body has `errors`, even beside good `data`.
+    fn partial_body(error: &str) -> String {
+        let mut v: Value = serde_json::from_str(DETAIL).unwrap();
+        v["data"]["p99"] = Value::Null;
+        v["errors"] = json!([{"type": "NOT_FOUND", "path": ["p99"], "message": error}]);
+        v.to_string()
+    }
+
+    #[test]
+    fn finish_keeps_partial_data_on_failure() {
+        let body = partial_body("Could not resolve to a node with the global id of 'X'.");
+        let stderr = "gh: Could not resolve to a node with the global id of 'X'.";
+        assert_eq!(finish(Ok(()), false, &body, stderr), Ok(body.clone()));
+        let gh = FakeGh::new().with("detail", finish(Ok(()), false, &body, stderr));
+        assert_eq!(detail(&gh, &[target("PR_1284", None)]).unwrap().len(), 9);
+        // SAML among the errors still wins.
+        let saml = partial_body("Resource protected by organization SAML enforcement.");
+        let gh = FakeGh::new().with("detail", finish(Ok(()), false, &saml, "gh: SAML"));
+        assert_eq!(
+            detail(&gh, &[target("PR_1284", None)]).unwrap_err(),
+            GhError::SamlSso
+        );
+        // No usable data: stderr decides as before.
+        let null = r#"{"data":null,"errors":[{"message":"boom"}]}"#;
+        assert_eq!(
+            finish(Ok(()), false, null, "HTTP 401: Bad credentials"),
+            Err(GhError::LoginExpired)
+        );
+        assert_eq!(
+            finish(Ok(()), false, "not json", "boom"),
+            Err(GhError::Other("boom".into()))
         );
     }
 
