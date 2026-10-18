@@ -61,24 +61,34 @@ pub fn render(frame: &mut Frame, screen: &Screen, scroll: &mut usize) {
     let width = area.width as usize;
     let top = top_lines(screen, d, width);
     let bottom = footer(screen, d, width);
-    let (body, cursor, cursor_end) = body_lines(screen, area.width);
+    let (body, cursor, cursor_end) = if screen.help {
+        (crate::ui::help::help_lines(area.width), 0, 0)
+    } else {
+        body_lines(screen, area.width)
+    };
 
     let top_h = (top.len() as u16).min(area.height);
     let bottom_h = (bottom.len() as u16).min(area.height.saturating_sub(top_h));
     let body_h = area.height.saturating_sub(top_h + bottom_h);
     let h = body_h as usize;
-    if h > 0 {
+    if h > 0 && !screen.help {
         if cursor < *scroll {
             *scroll = cursor;
         } else if cursor_end >= *scroll + h {
             *scroll = (cursor_end + 1).saturating_sub(h).min(cursor);
         }
     }
-    *scroll = (*scroll).min(body.len().saturating_sub(h));
+    // The overlay has its own scroll offset; the body's is left alone for when it closes.
+    let scrolled = if screen.help {
+        screen.help_scroll.min(body.len().saturating_sub(h))
+    } else {
+        *scroll = (*scroll).min(body.len().saturating_sub(h));
+        *scroll
+    };
 
     let rect = |y: u16, h: u16| Rect::new(area.x, area.y + y, area.width, h);
     frame.render_widget(Paragraph::new(top), rect(0, top_h));
-    let scrolled = u16::try_from(*scroll).unwrap_or(u16::MAX);
+    let scrolled = u16::try_from(scrolled).unwrap_or(u16::MAX);
     frame.render_widget(
         Paragraph::new(body).scroll((scrolled, 0)),
         rect(top_h, body_h),

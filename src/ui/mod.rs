@@ -1,6 +1,7 @@
 mod cells;
 mod chrome;
 mod drawer;
+pub mod help;
 pub mod rows;
 pub mod theme;
 
@@ -214,6 +215,43 @@ mod tests {
             crossterm::event::KeyModifiers::NONE,
         ));
         assert!(text_lines(&draw(&a, 80, 30)).iter().any(|l| l == "/ 4"));
+    }
+
+    #[test]
+    fn help_120() {
+        let mut a = app();
+        a.handle_key(key('?'));
+        let buf = draw(&a, 120, 50);
+        let t = text(&buf);
+        assert!(t.contains("details drawer"), "keys not clipped:\n{t}");
+        assert!(
+            t.contains("ATTENTION") && t.contains("MERGE"),
+            "two columns:\n{t}"
+        );
+        assert!(!t.contains("Tab"));
+        insta::assert_snapshot!(t);
+    }
+
+    #[test]
+    fn help_44() {
+        let mut a = app();
+        a.handle_key(key('?'));
+        insta::assert_snapshot!(text(&draw(&a, 44, 90)));
+    }
+
+    #[test]
+    fn help_scrolls_and_does_not_panic_tiny() {
+        let mut a = app();
+        a.handle_key(key('?'));
+        for _ in 0..3 {
+            a.handle_key(key('j'));
+        }
+        for (w, h) in [(10, 5), (1, 1), (44, 12), (100, 6)] {
+            draw(&a, w, h);
+        }
+        let first = text_lines(&draw(&a, 44, 12))[3].clone();
+        a.handle_key(key('k'));
+        assert_ne!(first, text_lines(&draw(&a, 44, 12))[3]);
     }
 
     #[test]

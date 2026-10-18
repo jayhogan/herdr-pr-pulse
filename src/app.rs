@@ -145,6 +145,8 @@ pub struct Screen {
     /// The PR whose drawer is open (when it is visible).
     pub drawer_pr: Option<String>,
     pub help: bool,
+    /// First visible line of the help overlay.
+    pub help_scroll: usize,
     pub filter: Option<FilterState>,
     pub status: Option<String>,
     /// The last herdr snapshot succeeded (else agent dots read `?`).
@@ -175,6 +177,8 @@ pub struct App {
     cursor: usize,
     /// Id of the PR the drawer is attached to.
     drawer: Option<String>,
+    help: bool,
+    help_scroll: usize,
     folds: BTreeSet<String>,
     filter: Option<FilterState>,
     /// Where folds persist (`folds.json`); without one they live in memory only.
@@ -244,6 +248,8 @@ impl App {
             sort: SortOrder::Urgency,
             cursor: 0,
             drawer: None,
+            help: false,
+            help_scroll: 0,
             folds: BTreeSet::new(),
             filter: None,
             state: None,
@@ -328,7 +334,14 @@ impl App {
         if self.filter.as_ref().is_some_and(|f| f.editing) {
             return self.edit_filter(key);
         }
+        if self.help {
+            return self.help_key(key);
+        }
         match key.code {
+            KeyCode::Char('?') => {
+                self.help = true;
+                self.help_scroll = 0;
+            }
             KeyCode::Char('/') => {
                 self.filter.get_or_insert_with(FilterState::default).editing = true;
             }
@@ -353,6 +366,26 @@ impl App {
                 if let Some(pr) = self.selected_pr() {
                     return Action::Open(pr.url);
                 }
+            }
+            _ => {}
+        }
+        Action::None
+    }
+
+    /// Keys while the help overlay is open: ?/Esc close it, j/k scroll it, q quits, the rest
+    /// are ignored.
+    fn help_key(&mut self, key: KeyEvent) -> Action {
+        match key.code {
+            KeyCode::Char('?') | KeyCode::Esc => self.help = false,
+            KeyCode::Char('q') => return Action::Quit,
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                return Action::Quit;
+            }
+            KeyCode::Char('j') | KeyCode::Down => {
+                self.help_scroll = (self.help_scroll + 1).min(crate::ui::help::max_scroll());
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                self.help_scroll = self.help_scroll.saturating_sub(1)
             }
             _ => {}
         }
@@ -875,7 +908,8 @@ impl App {
             body,
             cursor: self.cursor.min(selectable.saturating_sub(1)),
             drawer_pr,
-            help: false,
+            help: self.help,
+            help_scroll: self.help_scroll,
             filter: self.filter.clone(),
             status: self.status.clone(),
             herdr_ok: self.herdr_ok,
@@ -1517,5 +1551,39 @@ mod tests {
         a.handle_key(key(KeyCode::Char('l')));
         let saved: BTreeSet<String> = state().load("folds.json").unwrap();
         assert!(saved.is_empty());
+    }
+
+    #[test]
+    fn help_toggles_scrolls_and_swallows_keys() {
+        let mut a = app();
+        assert!(!a.screen(now()).help);
+        a.handle_key(key(KeyCode::Char('?')));
+        assert!(a.screen(now()).help);
+        let c = a.screen(now()).cursor;
+        a.handle_key(key(KeyCode::Char('j')));
+        a.handle_key(key(KeyCode::Char('j')));
+        assert_eq!(a.screen(now()).help_scroll, 2);
+        assert_eq!(a.screen(now()).cursor, c, "j scrolls help, not the cursor");
+        a.handle_key(key(KeyCode::Char('k')));
+        assert_eq!(a.screen(now()).help_scroll, 1);
+        assert_eq!(a.handle_key(key(KeyCode::Char('r'))), Action::None);
+        assert_eq!(a.handle_key(key(KeyCode::Enter)), Action::None);
+        assert!(a.screen(now()).help);
+        a.handle_key(key(KeyCode::Esc));
+        assert!(!a.screen(now()).help);
+        a.handle_key(key(KeyCode::Char('?')));
+        assert_eq!(a.screen(now()).help_scroll, 0);
+        a.handle_key(key(KeyCode::Char('?')));
+        assert!(!a.screen(now()).help);
+        a.handle_key(key(KeyCode::Char('?')));
+        assert_eq!(a.handle_key(key(KeyCode::Char('q'))), Action::Quit);
+    }
+
+    #[test]
+    fn question_mark_is_text_while_filter_editing() {
+        let mut a = app();
+        a.handle_key(key(KeyCode::Char('/')));
+        a.handle_key(key(KeyCode::Char('?')));
+        assert!(!a.screen(now()).help);
     }
 }
