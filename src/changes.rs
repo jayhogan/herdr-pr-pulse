@@ -124,7 +124,9 @@ pub fn diff(old: &Fingerprint, pr: &Pr) -> Vec<String> {
             CiState::None => {}
         }
     }
-    for r in pr.reviewers.iter().filter(|r| !r.is_bot) {
+    let mut reviewers: Vec<_> = pr.reviewers.iter().collect();
+    reviewers.sort_by_key(|r| (r.is_bot, r.login.as_str()));
+    for r in reviewers {
         if old.reviewers.get(&r.login) == Some(&r.state) {
             continue;
         }
@@ -136,12 +138,7 @@ pub fn diff(old: &Fingerprint, pr: &Pr) -> Vec<String> {
             ReviewState::Pending => {}
         }
     }
-    // Threads that arrive alongside a CI or review event are that event's fallout (board 6
-    // shows #1287 and #412 without a thread line), so only a lone increase is reported here;
-    // a merge-state event on the same PR still leaves the thread line out.
-    let thread_increase = pr.unresolved_threads > old.threads;
-    let lone = out.is_empty() && !merge_event(old, pr);
-    if thread_increase && lone {
+    if pr.unresolved_threads > old.threads {
         out.push(format!(
             "◇ {} new thread(s)",
             pr.unresolved_threads - old.threads
@@ -253,14 +250,22 @@ mod tests {
         assert!(c.observe(&after, t("2026-10-17T14:32:08Z")));
         assert_eq!(
             marked(&c, 1287, &after),
-            ["✗ CI failed: test-integration", "✗ @art requested changes"]
+            [
+                "✗ CI failed: test-integration",
+                "✗ @art requested changes",
+                "◇ @claude[bot] commented",
+                "◇ 3 new thread(s)"
+            ]
         );
         assert_eq!(
             marked(&c, 1284, &after),
             ["✓ @kayla approved", "✓ merge clean"]
         );
         assert_eq!(marked(&c, 1291, &after), ["◇ 1 new thread(s)"]);
-        assert_eq!(marked(&c, 412, &after), ["⚠ now conflicts with main"]);
+        assert_eq!(
+            marked(&c, 412, &after),
+            ["◇ 2 new thread(s)", "⚠ now conflicts with main"]
+        );
         let changed: Vec<u32> = after
             .iter()
             .filter(|p| c.prs[&p.id].changed_at.is_some())
