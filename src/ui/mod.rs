@@ -453,7 +453,7 @@ mod tests {
                 assert!(people < art && art < bots && bots < claude, "{width}:\n{t}");
             } else {
                 assert!(t.contains("People") && t.contains("Bots"), "{width}:\n{t}");
-                assert!(t.contains("@claude[bot]"), "{width}:\n{t}");
+                assert!(t.contains("@claud"), "{width}:\n{t}");
             }
         }
     }
@@ -463,12 +463,12 @@ mod tests {
         let mut a = app();
         a.move_cursor(-2); // group header
         a.handle_key(key(' '));
-        assert!(!a.screen(now()).drawer_open);
+        assert!(!a.screen(now()).drawer_pr.is_some());
         a.move_cursor(2);
         a.handle_key(key(' '));
-        assert!(a.screen(now()).drawer_open);
+        assert!(a.screen(now()).drawer_pr.is_some());
         a.handle_key(key(' '));
-        assert!(!a.screen(now()).drawer_open);
+        assert!(!a.screen(now()).drawer_pr.is_some());
     }
 
     #[test]
@@ -502,5 +502,17 @@ mod tests {
     #[test]
     fn drawer_without_drawer_leaves_rows_alone() {
         assert!(!text(&draw(&app(), 120, 30)).contains("close"));
+    }
+
+    #[test]
+    fn drawer_shows_conflicts_for_a_dirty_pr() {
+        for width in [120, 80, 44] {
+            let mut a = app();
+            a.move_cursor(4); // #412, conflicts with main
+            a.handle_key(key(' '));
+            let t = text(&draw(&a, width, 40));
+            assert!(t.contains("⚠ conflicts with main"), "{width}:\n{t}");
+            assert!(!t.contains("no conflicts"), "{width}:\n{t}");
+        }
     }
 }

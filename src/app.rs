@@ -138,7 +138,6 @@ pub struct Screen {
     pub body: Body,
     /// Index into selectable rows: group headers and PR rows of unfolded groups.
     pub cursor: usize,
-    pub drawer_open: bool,
     /// The PR whose drawer is open (when it is visible).
     pub drawer_pr: Option<String>,
     pub help: bool,
@@ -755,7 +754,6 @@ impl App {
             banner: self.banner.clone(),
             body,
             cursor: self.cursor.min(selectable.saturating_sub(1)),
-            drawer_open: drawer_pr.is_some(),
             drawer_pr,
             help: false,
             filter: None,

@@ -12,10 +12,10 @@ expression: "text(&draw(&drawer_app(), 80, 30))"
 ▶▲▲ ├2  #1287 ● audit: kafka produce… ✗ test-integ… ◇3  ✗ chg ◷ on #1284
     │ ┌ CI                  │ Reviews                 │ Merge
     │ │ ✗ test-integration  │ People                  │ ✓ current w/ #1284
-    │ │ ✓ 8 others pass     │ ✗ @art         chg  ◇2 …│ ✓ no conflicts
-    │ │                     │ ○ @kayla       pend ◇1 …│
+    │ │ ✓ 8 others pass     │ ✗ @art    chg  ◇2 open  │ ✓ no conflicts
+    │ │                     │ ○ @kayla  pend ◇1 open  │
     │ │                     │ Bots                    │
-    │ │                     │ · @claude[bot] cmt      │
+    │ │                     │ · @claud… cmt           │
     │ └ ␣ close
   △ ├3  #1291 ● audit: consumer writ… ✓ 9/9         ◇1  ○ 2   ◷ on #1287
   ◷ └4  #1295 ◌ audit: viewer UI      ◐ 5/9         ·   ∅     ◷ on #1291

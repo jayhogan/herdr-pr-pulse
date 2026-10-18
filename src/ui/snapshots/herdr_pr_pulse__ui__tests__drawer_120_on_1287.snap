@@ -12,10 +12,10 @@ expression: "text(&draw(&drawer_app(), 120, 30))"
 ▶ ▲▲ ├─ 2  #1287  ● ready audit: kafka producer for aud… ✗ test-integration   ◇ 3   ✗ changes req  ◷ waiting on #1284
      │  ┌ CI                              │ Reviews                             │ Merge
      │  │ ✗ test-integration   6m ago     │ People                              │ ✓ up to date with #1284
-     │  │ ✓ 8 other checks pass           │ ✗ @art         changes   ◇2 open    │ ✓ no conflicts
-     │  │                                 │ ○ @kayla       pending   ◇1 open    │
+     │  │ ✓ 8 other checks pass           │ ✗ @art     changes   ◇2 open        │ ✓ no conflicts
+     │  │                                 │ ○ @kayla   pending   ◇1 open        │
      │  │                                 │ Bots                                │
-     │  │                                 │ · @claude[bot] commented            │
+     │  │                                 │ · @claude[bot]  commented           │
      │  └ ␣ close
   △  ├─ 3  #1291  ● ready audit: consumer writes to aud… ✓ pass 9/9           ◇ 1   ○ pending 2    ◷ waiting on #1287
   ◷  └─ 4  #1295  ◌ draft audit: viewer UI               ◐ running 5/9        · 0   ∅ no reviewers ◷ waiting on #1291

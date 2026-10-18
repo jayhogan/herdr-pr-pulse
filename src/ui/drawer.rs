@@ -148,10 +148,16 @@ fn review_item(r: &Reviewer, mode: Mode, login_min: usize) -> Item {
         _ => (if mode.full() { 9 } else { 7 }, 0),
     };
     // Never touching the state word, whatever the login.
-    let login_w = base_w.max(login_min);
+    let mut login_w = base_w.max(login_min);
+    let mut login = format!("@{}", r.login);
+    if mode == Mode::Medium {
+        // The column is 24 wide: keep room for the state word and `◇n open`.
+        login_w = login_w.min(8);
+        login = fit(&login, login_w - 1);
+    }
     let mut item = Item::new(vec![
         span(format!("{glyph} "), style),
-        span(padded(&format!("@{}", r.login), login_w), Style::new()),
+        span(padded(&login, login_w), Style::new()),
         span(padded(word, state_w), style),
     ]);
     if r.unresolved_threads > 0 {
@@ -171,18 +177,13 @@ fn reviews_section(row: &RowView, mode: Mode) -> Section {
         items.push(Item::new(vec![span("∅ no reviewers", theme::dim())]));
     }
     // Headings only help when both kinds are there (board 1 shows people alone without one).
-    let login_min = row
-        .pr
-        .reviewers
-        .iter()
-        .map(|r| dw(&r.login) + 2)
-        .max()
-        .unwrap_or(0);
     let headed = !people.is_empty() && !bots.is_empty();
     for (name, group) in [("People", people), ("Bots", bots)] {
         if headed {
             items.push(Item::heading(name));
         }
+        // Logins line up within a group, not across People and Bots.
+        let login_min = group.iter().map(|r| dw(&r.login) + 3).max().unwrap_or(0);
         items.extend(group.into_iter().map(|r| review_item(r, mode, login_min)));
     }
     Section {

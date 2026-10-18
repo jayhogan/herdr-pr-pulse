@@ -15,10 +15,10 @@ expression: "text(&draw(&drawer_app(), 44, 34))"
  │  │ ✓ 8 other checks pass
  │  ├ Reviews ──────────────────────────────
  │  │ People
- │  │ ✗ @art         changes        ◇2 open
- │  │ ○ @kayla       pending        ◇1 open
+ │  │ ✗ @art     changes            ◇2 open
+ │  │ ○ @kayla   pending            ◇1 open
  │  │ Bots
- │  │ · @claude[bot] commented
+ │  │ · @claude[bot]  commented
  │  ├ Merge ────────────────────────────────
  │  │ ✓ up to date with #1284
  │  │ ✓ no conflicts
