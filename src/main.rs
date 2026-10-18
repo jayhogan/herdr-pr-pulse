@@ -88,7 +88,15 @@ fn main() -> ExitCode {
 }
 
 fn run(args: &Args) -> Result<(), String> {
-    let mut app = App::new(args.kind, Local::now().offset().fix());
+    let app = App::new(args.kind, Local::now().offset().fix());
+    // Folds persist in the real state dir; fixtures mode keeps them in a throwaway one
+    // (created on the first fold, removed on exit).
+    let fixtures_dir = env::temp_dir().join(format!("herdr-pr-pulse-folds-{}", std::process::id()));
+    let mut app = app.with_state(if args.fixtures {
+        StateDir::new(fixtures_dir.clone())
+    } else {
+        StateDir::default_location()
+    });
     let mut live = if args.fixtures {
         load_fixtures(&mut app)?;
         None
@@ -104,6 +112,9 @@ fn run(args: &Args) -> Result<(), String> {
     let mut terminal = ratatui::init();
     let result = event_loop(&mut terminal, &mut app, live.as_mut());
     ratatui::restore();
+    if args.fixtures {
+        let _ = std::fs::remove_dir_all(&fixtures_dir);
+    }
     result.map_err(|e| e.to_string())
 }
 

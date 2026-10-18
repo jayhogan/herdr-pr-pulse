@@ -60,8 +60,12 @@ pub struct Banner {
     pub message: String,
     pub fix: String,
 }
+/// The `/` filter: `editing` while the text is being typed, applied after ⏎.
 #[derive(Debug, Clone, PartialEq, Default)]
-pub struct FilterState;
+pub struct FilterState {
+    pub text: String,
+    pub editing: bool,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AgentDot {
@@ -172,6 +176,9 @@ pub struct App {
     /// Id of the PR the drawer is attached to.
     drawer: Option<String>,
     folds: BTreeSet<String>,
+    filter: Option<FilterState>,
+    /// Where folds persist (`folds.json`); without one they live in memory only.
+    state: Option<StateDir>,
     /// PR Pulse's own pane, for `⎇` and so a Workspace copy remembers its checkout.
     own_pane: Option<String>,
     /// The own pane's checkout key from the last good snapshot: whose memory the Workspace
@@ -193,6 +200,19 @@ pub struct App {
     stale: bool,
     banner: Option<Banner>,
     progress: LoadProgress,
+}
+
+/// `folds.json`: a `BTreeSet<String>` of folded group keys.
+const FOLDS_FILE: &str = "folds.json";
+
+/// Whether group `g` matches the filter text: case-insensitive substring of its repo, any
+/// `#number` or any title.
+fn matches_filter(g: &Group, text: &str) -> bool {
+    let q = text.to_lowercase();
+    g.repo.to_lowercase().contains(&q)
+        || g.layers
+            .iter()
+            .any(|p| format!("#{}", p.number).contains(&q) || p.title.to_lowercase().contains(&q))
 }
 
 impl Scope {
@@ -225,6 +245,8 @@ impl App {
             cursor: 0,
             drawer: None,
             folds: BTreeSet::new(),
+            filter: None,
+            state: None,
             own_pane: None,
             own_checkout: None,
             status: None,
@@ -241,10 +263,81 @@ impl App {
         }
     }
 
+    /// Keeps folds in `state`'s `folds.json`: loads them now, saves on every change.
+    pub fn with_state(mut self, state: StateDir) -> App {
+        match state.load::<BTreeSet<String>>(FOLDS_FILE) {
+            Ok(folds) => self.folds = folds,
+            Err(e) => self.status = Some(format!("folds not loaded: {e}")),
+        }
+        self.state = Some(state);
+        self
+    }
+
+    /// Folds (or unfolds) the group under the cursor and keeps the cursor on its header.
+    fn set_fold(&mut self, fold: bool) {
+        let Some(key) = self.selected_group().map(|g| g.key) else {
+            return;
+        };
+        if self.folds.contains(&key) == fold {
+            return;
+        }
+        let apply = |folds: &mut BTreeSet<String>| {
+            if fold {
+                folds.insert(key.clone())
+            } else {
+                folds.remove(&key)
+            }
+        };
+        match self.state.as_ref().map(|s| s.update(FOLDS_FILE, apply)) {
+            Some(Ok(folds)) => self.folds = folds,
+            Some(Err(e)) => {
+                apply(&mut self.folds);
+                self.status = Some(format!("folds not saved: {e}"));
+            }
+            None => {
+                apply(&mut self.folds);
+            }
+        }
+        self.restore(Some(Selection::Group(key)));
+    }
+
+    /// Keys while the filter text is being typed: everything but Ctrl-C is text input.
+    fn edit_filter(&mut self, key: KeyEvent) -> Action {
+        let Some(f) = self.filter.as_mut() else {
+            return Action::None;
+        };
+        match key.code {
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                return Action::Quit;
+            }
+            KeyCode::Char(c) => f.text.push(c),
+            KeyCode::Backspace => {
+                f.text.pop();
+            }
+            KeyCode::Enter => f.editing = false,
+            KeyCode::Esc => self.filter = None,
+            _ => return Action::None,
+        }
+        self.cursor = 0;
+        Action::None
+    }
+
     /// Applies a key press. Every key clears the status line first.
     pub fn handle_key(&mut self, key: KeyEvent) -> Action {
         self.status = None;
+        if self.filter.as_ref().is_some_and(|f| f.editing) {
+            return self.edit_filter(key);
+        }
         match key.code {
+            KeyCode::Char('/') => {
+                self.filter.get_or_insert_with(FilterState::default).editing = true;
+            }
+            KeyCode::Esc if self.filter.is_some() => {
+                self.filter = None;
+                self.cursor = 0;
+            }
+            KeyCode::Char('h') | KeyCode::Left => self.set_fold(true),
+            KeyCode::Char('l') | KeyCode::Right => self.set_fold(false),
             KeyCode::Char('q') => return Action::Quit,
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 return Action::Quit;
@@ -702,13 +795,41 @@ impl App {
                         (self.group_view(d, g), updated.unwrap_or(now))
                     })
                     .collect();
+                // Summary counts cover everything in scope; the filter only narrows the list.
+                let all_levels: Vec<Attention> = shown
+                    .iter()
+                    .flat_map(|(g, _)| &g.rows)
+                    .filter(|r| self.in_scope(d, &r.pr.id))
+                    .filter_map(|r| r.attention)
+                    .collect();
+                counts = count(all_levels);
+                if let Some(f) = self.filter.as_ref().filter(|f| !f.text.is_empty()) {
+                    let keep: BTreeSet<&str> = d
+                        .groups
+                        .iter()
+                        .filter(|g| matches_filter(g, &f.text))
+                        .map(|g| g.key.as_str())
+                        .collect();
+                    shown.retain(|(g, _)| keep.contains(g.key.as_str()));
+                }
                 match self.sort {
                     SortOrder::Urgency => {
                         shown.sort_by(|a, b| b.0.rank.cmp(&a.0.rank).then(b.1.cmp(&a.1)));
                     }
                     SortOrder::Updated => shown.sort_by_key(|a| std::cmp::Reverse(a.1)),
                     SortOrder::Repo => {
-                        shown.sort_by(|a, b| a.0.repo.cmp(&b.0.repo).then(b.1.cmp(&a.1)));
+                        shown.sort_by(|a, b| {
+                            (
+                                a.0.repo.as_str(),
+                                std::cmp::Reverse(a.0.rank),
+                                std::cmp::Reverse(a.1),
+                            )
+                                .cmp(&(
+                                    b.0.repo.as_str(),
+                                    std::cmp::Reverse(b.0.rank),
+                                    std::cmp::Reverse(b.1),
+                                ))
+                        });
                     }
                 }
                 let in_scope_levels: Vec<Attention> = shown
@@ -718,7 +839,6 @@ impl App {
                     .filter_map(|r| r.attention)
                     .collect();
                 header.prs = in_scope_levels.len();
-                counts = count(in_scope_levels);
                 header.stacks = shown.len();
                 header.repos = shown
                     .iter()
@@ -756,7 +876,7 @@ impl App {
             cursor: self.cursor.min(selectable.saturating_sub(1)),
             drawer_pr,
             help: false,
-            filter: None,
+            filter: self.filter.clone(),
             status: self.status.clone(),
             herdr_ok: self.herdr_ok,
             now,
@@ -1264,5 +1384,138 @@ mod tests {
         assert_eq!(row.layer, 3);
         assert!(!row.is_last);
         assert!(gs[0].rows[3].is_last);
+    }
+
+    fn type_text(a: &mut App, text: &str) {
+        for c in text.chars() {
+            a.handle_key(key(KeyCode::Char(c)));
+        }
+    }
+
+    fn names(a: &App) -> Vec<String> {
+        groups(a).into_iter().map(|g| g.name).collect()
+    }
+
+    #[test]
+    fn filter_by_number() {
+        for q in ["#412", "412"] {
+            let mut a = app();
+            a.handle_key(key(KeyCode::Char('/')));
+            type_text(&mut a, q);
+            assert_eq!(names(&a), ["thread-model"], "{q}");
+            // Matching groups show whole.
+            assert_eq!(groups(&a)[0].rows.len(), 2);
+        }
+    }
+
+    #[test]
+    fn filter_by_repo_and_title_ignoring_case() {
+        let mut a = app();
+        a.handle_key(key(KeyCode::Char('/')));
+        type_text(&mut a, "DOCKET");
+        assert!(groups(&a).iter().all(|g| g.repo == "heard/docket"));
+        assert!(!groups(&a).is_empty());
+        a.handle_key(key(KeyCode::Esc));
+        a.handle_key(key(KeyCode::Char('/')));
+        type_text(&mut a, "Tokenizer");
+        assert_eq!(groups(&a).len(), 1);
+    }
+
+    #[test]
+    fn filter_editing_keys_apply_and_clear() {
+        let mut a = app();
+        a.handle_key(key(KeyCode::Char('/')));
+        // q is text while editing; Backspace deletes.
+        assert_eq!(a.handle_key(key(KeyCode::Char('q'))), Action::None);
+        type_text(&mut a, "x");
+        a.handle_key(key(KeyCode::Backspace));
+        assert_eq!(
+            a.screen(now()).filter,
+            Some(FilterState {
+                text: "q".into(),
+                editing: true
+            })
+        );
+        let ctrl_c = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
+        assert_eq!(a.handle_key(ctrl_c), Action::Quit);
+        a.handle_key(key(KeyCode::Enter));
+        assert!(!a.screen(now()).filter.unwrap().editing);
+        // Applied: normal keys work again, Esc clears.
+        assert_eq!(a.handle_key(key(KeyCode::Char('q'))), Action::Quit);
+        a.handle_key(key(KeyCode::Esc));
+        assert_eq!(a.screen(now()).filter, None);
+    }
+
+    #[test]
+    fn filter_does_not_change_summary_counts() {
+        let mut a = app();
+        let before = a.screen(now());
+        a.handle_key(key(KeyCode::Char('/')));
+        type_text(&mut a, "#412");
+        let after = a.screen(now());
+        assert_eq!(after.summary.counts, before.summary.counts);
+        assert_eq!(after.header.stacks, 1);
+        assert!(after.header.prs < before.header.prs);
+    }
+
+    #[test]
+    fn sort_cycles() {
+        let mut a = app();
+        let urgency = names(&a);
+        a.handle_key(key(KeyCode::Char('S')));
+        assert_eq!(a.screen(now()).header.sort, SortOrder::Updated);
+        let updated_at = |g: &GroupView| g.rows.iter().map(|r| r.pr.updated_at).max().unwrap();
+        let gs = groups(&a);
+        assert!(
+            gs.windows(2)
+                .all(|w| updated_at(&w[0]) >= updated_at(&w[1]))
+        );
+        a.handle_key(key(KeyCode::Char('S')));
+        assert_eq!(a.screen(now()).header.sort, SortOrder::Repo);
+        let gs = groups(&a);
+        assert!(gs.windows(2).all(|w| w[0].repo <= w[1].repo));
+        assert!(
+            gs.windows(2)
+                .all(|w| w[0].repo != w[1].repo || w[0].rank >= w[1].rank)
+        );
+        a.handle_key(key(KeyCode::Char('S')));
+        assert_eq!(a.screen(now()).header.sort, SortOrder::Urgency);
+        assert_eq!(names(&a), urgency);
+    }
+
+    #[test]
+    fn fold_and_unfold_keep_cursor_on_header() {
+        let mut a = app();
+        select(&mut a, 412);
+        a.handle_key(key(KeyCode::Char('h')));
+        let g = a.selected_group().unwrap();
+        assert!(g.folded);
+        assert_eq!(a.selection(), Some(Selection::Group(g.key.clone())));
+        a.handle_key(key(KeyCode::Char('l')));
+        assert!(!a.selected_group().unwrap().folded);
+        a.handle_key(key(KeyCode::Left));
+        assert!(a.selected_group().unwrap().folded);
+        a.handle_key(key(KeyCode::Right));
+        assert!(!a.selected_group().unwrap().folded);
+    }
+
+    #[test]
+    fn fold_persists() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = || StateDir::new(tmp.path().to_path_buf());
+        let mut a = app().with_state(state());
+        select(&mut a, 412);
+        a.handle_key(key(KeyCode::Char('h')));
+        let key412 = a.selected_group().unwrap().key;
+        let saved: BTreeSet<String> = state().load("folds.json").unwrap();
+        assert_eq!(saved, BTreeSet::from([key412.clone()]));
+
+        let b = app().with_state(state());
+        let g = groups(&b).into_iter().find(|g| g.key == key412).unwrap();
+        assert!(g.folded);
+
+        a.handle_key(key(KeyCode::Char('l')));
+        let saved: BTreeSet<String> = state().load("folds.json").unwrap();
+        assert!(saved.is_empty());
     }
 }

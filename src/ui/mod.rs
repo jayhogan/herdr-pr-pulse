@@ -175,6 +175,47 @@ mod tests {
         assert!(t.contains("· heard/web"), "{t}");
     }
 
+    /// Board 3: the thread-model stack folded, cursor on its header.
+    #[test]
+    fn mine_80_folded() {
+        let mut a = app();
+        a.handle_key(key('j'));
+        a.handle_key(key('j'));
+        a.handle_key(key('j'));
+        a.handle_key(key('j'));
+        while a.selected_group().is_none_or(|g| g.name != "thread-model") {
+            a.handle_key(key('j'));
+        }
+        a.handle_key(key('h'));
+        let buf = draw(&a, 80, 30);
+        assert!(text(&buf).contains("(2 hidden)"));
+        insta::assert_snapshot!(text(&buf));
+    }
+
+    #[test]
+    fn mine_44_filter_editing() {
+        let mut a = app();
+        a.handle_key(key('/'));
+        for c in "thread".chars() {
+            a.handle_key(key(c));
+        }
+        let buf = draw(&a, 44, 30);
+        assert!(text_lines(&buf).iter().any(|l| l == "/ thread▏"));
+        insta::assert_snapshot!(text(&buf));
+    }
+
+    #[test]
+    fn mine_filter_applied_is_dim_line() {
+        let mut a = app();
+        a.handle_key(key('/'));
+        a.handle_key(key('4'));
+        a.handle_key(crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::Enter,
+            crossterm::event::KeyModifiers::NONE,
+        ));
+        assert!(text_lines(&draw(&a, 80, 30)).iter().any(|l| l == "/ 4"));
+    }
+
     #[test]
     fn mine_120() {
         insta::assert_snapshot!(text(&draw(&app(), 120, 30)));

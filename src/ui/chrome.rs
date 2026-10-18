@@ -219,8 +219,17 @@ pub(super) fn footer(screen: &Screen, d: Density, width: usize) -> Vec<Line<'sta
         Some(status) => Line::raw(fit(&format!(" {status}"), width)),
         None => Line::from(spans),
     };
-    match d {
-        Wide | Medium => vec![Line::styled("─".repeat(width), theme::dim()), hints],
-        Narrow | Tiny => vec![hints],
+    let mut lines = Vec::new();
+    if let Some(f) = &screen.filter {
+        lines.push(if f.editing {
+            Line::raw(fit(&format!("/ {}▏", f.text), width))
+        } else {
+            Line::styled(fit(&format!("/ {}", f.text), width), theme::dim())
+        });
     }
+    match d {
+        Wide | Medium => lines.extend([Line::styled("─".repeat(width), theme::dim()), hints]),
+        Narrow | Tiny => lines.push(hints),
+    }
+    lines
 }
