@@ -119,6 +119,7 @@ pub struct Pr {
 pub struct SearchHit {
     pub id: String,
     pub repo: String,
+    pub head_ref: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -526,9 +527,11 @@ fn data_of(json: &str) -> Result<Value, String> {
 
 pub fn parse_search(json: &str) -> Result<SearchResult, String> {
     #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
     struct RawHit {
         id: String,
         repository: RawRepo,
+        head_ref_name: String,
     }
     #[derive(Deserialize)]
     struct RawSearch {
@@ -544,6 +547,7 @@ pub fn parse_search(json: &str) -> Result<SearchResult, String> {
             .map(|h| SearchHit {
                 id: h.id,
                 repo: h.repository.name_with_owner,
+                head_ref: h.head_ref_name,
             })
             .collect()
     };
@@ -713,7 +717,8 @@ mod tests {
             s.assigned[0],
             SearchHit {
                 id: "PR_415".into(),
-                repo: "heard/docket".into()
+                repo: "heard/docket".into(),
+                head_ref: "thread-model/sidebar".into()
             }
         );
     }

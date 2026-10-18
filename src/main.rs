@@ -3,6 +3,7 @@
 mod ago;
 mod app;
 mod attention;
+mod github;
 mod model;
 mod stacks;
 mod ui;

@@ -23,7 +23,7 @@ fragment prFields on PullRequest {
   reviewDecision
   stackEntry {
     position
-    stack { id number entries { nodes { position pullRequest { id } } } }
+    stack { id number entries(first: 50) { nodes { position pullRequest { id } } } }
   }
   reviewThreads(first: 50) {
     nodes { isResolved comments(first: 1) { nodes { author { login __typename } } } }
