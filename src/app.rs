@@ -6,9 +6,11 @@ use std::path::Path;
 use chrono::{DateTime, FixedOffset, Utc};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
+use crate::ago;
 use crate::attention::{
     AgentState, Attention, Counts, Reason, count, first_blocker, level, mergeable_through,
 };
+use crate::changes::{self, Changes, Seen};
 use crate::fetch::{FetchEvent, RepoStatus};
 use crate::git::Branches;
 use crate::herdr::Snapshot;
@@ -238,6 +240,20 @@ pub struct App {
     stale: bool,
     banner: Option<Banner>,
     progress: LoadProgress,
+    /// Fingerprints and events (`changes.json`, written by the fetch worker).
+    changes: Changes,
+    /// Seen times (`seen.json`) as last read or written.
+    seen: Seen,
+    /// The current visit: this copy's pane is visible (spec §9).
+    visit: Option<Visit>,
+}
+
+/// A visit (spec §9): from the own pane becoming visible until it is hidden again.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Visit {
+    pub started: DateTime<Utc>,
+    /// Per PR on screen: this view's effective seen time from before the visit.
+    pub baseline: BTreeMap<String, Option<DateTime<Utc>>>,
 }
 
 /// `folds.json`: a `BTreeSet<String>` of folded group keys.
@@ -303,15 +319,135 @@ impl App {
             stale: false,
             banner: None,
             progress: LoadProgress::default(),
+            changes: Changes::default(),
+            seen: Seen::default(),
+            visit: None,
         }
     }
 
-    /// Keeps folds in `state`'s `folds.json`: loads them now, saves on every change.
+    /// Whether this copy's pane can be seen (spec §9). Becoming visible starts a visit:
+    /// each PR on screen gets its baseline and is stamped seen. While visible, PRs that
+    /// appear are baselined and stamped as they do. Hidden ends the visit.
+    pub fn set_visible(&mut self, visible: bool, now: DateTime<Utc>) {
+        if !visible {
+            self.visit = None;
+            return;
+        }
+        let start = self.visit.is_none();
+        if start {
+            self.visit = Some(Visit {
+                started: now,
+                baseline: BTreeMap::new(),
+            });
+        }
+        self.see(now, start);
+    }
+
+    /// During a visit, stamps the PRs on screen as seen at `now` (all of them when `all`,
+    /// else those new to the visit). A PR new to the visit first gets its baseline from
+    /// the seen times stored before this stamp.
+    fn see(&mut self, now: DateTime<Utc>, all: bool) {
+        if self.visit.is_none() {
+            return;
+        }
+        let ids = self.shown_ids();
+        let kind = self.kind;
+        let visit = self.visit.as_mut().expect("checked above");
+        let fresh: Vec<String> = ids
+            .iter()
+            .filter(|id| !visit.baseline.contains_key(*id))
+            .cloned()
+            .collect();
+        let stamped = if all { ids } else { fresh.clone() };
+        if stamped.is_empty() {
+            return;
+        }
+        let mut apply = |seen: &mut Seen| {
+            for id in &fresh {
+                let before = seen.prs.get(id).copied().unwrap_or_default();
+                visit
+                    .baseline
+                    .insert(id.clone(), changes::effective(before, kind));
+            }
+            changes::stamp(seen, &stamped, kind, now)
+        };
+        match self
+            .state
+            .as_ref()
+            .map(|s| s.update(changes::SEEN_FILE, &mut apply))
+        {
+            Some(Ok(seen)) => self.seen = seen,
+            Some(Err(e)) => {
+                apply(&mut self.seen);
+                self.status = Some(format!("seen not saved: {e}"));
+            }
+            None => {
+                apply(&mut self.seen);
+            }
+        }
+    }
+
+    /// Every PR the view lists (folded and filtered ones too).
+    fn shown_ids(&self) -> Vec<String> {
+        let Some(d) = &self.data else {
+            return Vec::new();
+        };
+        if self.kind == ViewKind::Workspace && self.own_checkout.is_none() {
+            return Vec::new();
+        }
+        d.groups
+            .iter()
+            .filter(|g| self.shows(d, g))
+            .flat_map(|g| &g.layers)
+            .map(|p| p.id.clone())
+            .collect()
+    }
+
+    /// The seen time a PR's changes are compared against: from before the visit, or (no
+    /// visit, or not yet baselined) the stored one.
+    fn baseline(&self, id: &str) -> Option<DateTime<Utc>> {
+        match self.visit.as_ref().and_then(|v| v.baseline.get(id)) {
+            Some(b) => *b,
+            None => {
+                let seen = self.seen.prs.get(id).copied().unwrap_or_default();
+                changes::effective(seen, self.kind)
+            }
+        }
+    }
+
+    /// Whether PR `id` changed since this view last saw it, and what changed, newest first,
+    /// as "{event} {age} ago".
+    fn change_marks(&self, id: &str, now: DateTime<Utc>) -> (bool, Vec<String>) {
+        let Some(t) = self.changes.prs.get(id) else {
+            return (false, Vec::new());
+        };
+        let base = self.baseline(id);
+        if !changes::is_marked(t, base) {
+            return (false, Vec::new());
+        }
+        let mut events: Vec<&changes::Event> = t
+            .events
+            .iter()
+            .filter(|e| base.is_none_or(|b| e.at > b))
+            .collect();
+        // Stable: events of one fetch keep their order.
+        events.sort_by_key(|e| std::cmp::Reverse(e.at));
+        let lines = events
+            .iter()
+            .map(|e| format!("{} {} ago", e.text, ago::short(e.at, now)))
+            .collect();
+        (true, lines)
+    }
+
+    /// Keeps folds in `state`'s `folds.json` (loaded now, saved on every change), and seen
+    /// times and changes in its `seen.json` and `changes.json`.
     pub fn with_state(mut self, state: StateDir) -> App {
         match state.load::<BTreeSet<String>>(FOLDS_FILE) {
             Ok(folds) => self.folds = folds,
             Err(e) => self.status = Some(format!("folds not loaded: {e}")),
         }
+        self.changes = state.load(changes::CHANGES_FILE).unwrap_or_default();
+        self.seen = state.load(changes::SEEN_FILE).unwrap_or_default();
         self.state = Some(state);
         self
     }
@@ -601,6 +737,12 @@ impl App {
                         return; // nothing fetched yet (e.g. an empty cache): still loading
                     }
                 }
+                // The worker recorded this fetch's changes before writing the cache.
+                if let Some(state) = &self.state
+                    && let Ok(c) = state.load(changes::CHANGES_FILE)
+                {
+                    self.changes = c;
+                }
                 self.set_prs(
                     cache.prs,
                     &cache.authored,
@@ -608,6 +750,8 @@ impl App {
                     &cache.viewer,
                     cache.fetched_at.unwrap_or(now),
                 );
+                // What is on screen during a visit has now been seen.
+                self.see(now, true);
             }
         }
     }
@@ -660,18 +804,24 @@ impl App {
 
     /// Applies a herdr snapshot (spec §8): maps panes to checkouts, remembers the PR each
     /// pane has checked out, prunes the memory and recomputes the stacks' agents. An `Err`
-    /// (herdr unreachable) clears the agents and leaves the memory alone.
+    /// (herdr unreachable) clears the agents and leaves the memory alone. Whether the own
+    /// pane is visible starts or ends a visit (spec §9); unreachable counts as hidden.
     pub fn apply_snapshot(
         &mut self,
         snap: Result<Snapshot, String>,
         branches: &mut dyn Branches,
         state: &StateDir,
-        _now: DateTime<Utc>,
+        now: DateTime<Utc>,
     ) {
+        let visible = match (&snap, &self.own_pane) {
+            (Ok(s), Some(own)) => s.is_visible(own),
+            _ => false,
+        };
         let sel = self.selection();
         self.read_snapshot(snap, branches, state);
         self.refresh_agents();
         self.restore(sel);
+        self.set_visible(visible, now);
     }
 
     fn read_snapshot(
@@ -763,7 +913,7 @@ impl App {
         }
     }
 
-    fn group_view(&self, d: &Data, g: &Group) -> GroupView {
+    fn group_view(&self, d: &Data, g: &Group, now: DateTime<Utc>) -> GroupView {
         let (dot, checked_out) = match self.agents.get(&g.key) {
             Some((dot, n)) => (Some(dot.clone()), *n),
             None => (None, None),
@@ -783,6 +933,7 @@ impl App {
                 if open {
                     layer += 1;
                 }
+                let (changed, change_lines) = self.change_marks(&p.id, now);
                 RowView {
                     pr: p.clone(),
                     layer: if open { layer } else { 0 },
@@ -791,8 +942,8 @@ impl App {
                     waiting_on: if open { g.waiting_on(p.number) } else { None },
                     agent: if here { dot.clone() } else { None },
                     checked_out: here,
-                    changed: false,
-                    change_lines: Vec::new(),
+                    changed,
+                    change_lines,
                     foreign_author: (p.author != d.viewer).then(|| p.author.clone()),
                 }
             })
@@ -866,7 +1017,11 @@ impl App {
             spinner: SPINNER[self.spin],
         };
         header.fetched_at = self.data.as_ref().map(|d| d.fetched_at);
-        let mut counts = Counts::default();
+        let mut summary = Summary {
+            counts: Counts::default(),
+            changed: 0,
+            since: None,
+        };
         // A Workspace copy that cannot tell which checkout it is in has nothing to list.
         let lost = match self.kind {
             ViewKind::Workspace if self.own_checkout.is_none() => {
@@ -890,7 +1045,7 @@ impl App {
                     .filter(|g| self.shows(d, g))
                     .map(|g| {
                         let updated = g.layers.iter().map(|p| p.updated_at).max();
-                        (self.group_view(d, g), updated.unwrap_or(now))
+                        (self.group_view(d, g, now), updated.unwrap_or(now))
                     })
                     .collect();
                 // Summary counts cover everything in scope; the filter only narrows the list.
@@ -900,10 +1055,17 @@ impl App {
                     .filter(|r| self.in_scope(d, &r.pr.id))
                     .filter_map(|r| r.attention)
                     .collect();
-                counts = count(all_levels);
+                summary.counts = count(all_levels);
+                // ✦: every marked row listed; since = the oldest baseline among them.
+                let marked = shown
+                    .iter()
+                    .flat_map(|(g, _)| &g.rows)
+                    .filter(|r| r.changed);
+                summary.changed = marked.clone().count();
+                summary.since = marked.filter_map(|r| self.baseline(&r.pr.id)).min();
                 if shown.is_empty() {
                     let body = Body::Empty(self.empty_info(d));
-                    return self.finish_screen(header, counts, body, now);
+                    return self.finish_screen(header, summary, body, now);
                 }
                 if let Some(f) = self.filter.as_ref().filter(|f| !f.text.is_empty()) {
                     let keep: BTreeSet<&str> = d
@@ -950,7 +1112,7 @@ impl App {
                 Body::Groups(shown.into_iter().map(|(g, _)| g).collect())
             }
         };
-        self.finish_screen(header, counts, body, now)
+        self.finish_screen(header, summary, body, now)
     }
 
     /// What an empty view says instead (board 4).
@@ -1007,7 +1169,7 @@ impl App {
     fn finish_screen(
         &self,
         header: Header,
-        counts: Counts,
+        summary: Summary,
         body: Body,
         now: DateTime<Utc>,
     ) -> Screen {
@@ -1029,11 +1191,7 @@ impl App {
         };
         Screen {
             header,
-            summary: Summary {
-                counts,
-                changed: 0,
-                since: None,
-            },
+            summary,
             // A GitHub error says more (and has a fix); herdr's shows when it is the only one.
             banner: self.banner.clone().or_else(|| {
                 self.herdr_down.then(|| Banner {
@@ -1774,5 +1932,179 @@ mod tests {
         a.handle_key(key(KeyCode::Char('/')));
         a.handle_key(key(KeyCode::Char('?')));
         assert!(!a.screen(now()).help);
+    }
+
+    // ------------------------------------------------------------ visits and ✦ marks (§9)
+
+    fn at(s: &str) -> DateTime<Utc> {
+        format!("2026-10-17T{s}Z").parse().unwrap()
+    }
+
+    /// Board 6 (`seed_board6`), plus the fixture workspace memory.
+    fn changed_state(dir: &Path) -> StateDir {
+        let state = StateDir::new(dir.to_path_buf());
+        crate::seed_board6(&state).unwrap();
+        std::fs::write(
+            dir.join(workspaces::FILE),
+            include_str!("../tests/fixtures/workspaces.json"),
+        )
+        .unwrap();
+        state
+    }
+
+    /// A copy on `dir`'s state, its own pane `pane`, after a snapshot with `focused` the
+    /// focused workspace (so the pane is visible when it is in that workspace).
+    fn copy(kind: ViewKind, dir: &Path, pane: &str, focused: &str, t: &str) -> App {
+        let mut a = App::new(kind, FixedOffset::east_opt(0).unwrap())
+            .with_state(StateDir::new(dir.to_path_buf()));
+        a.data = app().data;
+        a.set_own_pane(pane.into());
+        a.set_path_exists(|_| true);
+        look(&mut a, dir, focused, t);
+        a
+    }
+
+    /// A herdr snapshot with workspace `focused` in front, applied at `t`.
+    fn look(a: &mut App, dir: &Path, focused: &str, t: &str) {
+        let mut snap =
+            crate::herdr::parse_snapshot(include_str!("../tests/fixtures/snapshot.json")).unwrap();
+        snap.focused_workspace_id = Some(focused.into());
+        a.apply_snapshot(
+            Ok(snap),
+            &mut crate::git::FixtureBranches::embedded(),
+            &StateDir::new(dir.to_path_buf()),
+            at(t),
+        );
+    }
+
+    fn marked(a: &App, t: &str) -> Vec<u32> {
+        let Body::Groups(gs) = a.screen(at(t)).body else {
+            panic!("expected groups")
+        };
+        gs.iter()
+            .flat_map(|g| &g.rows)
+            .filter(|r| r.changed)
+            .map(|r| r.pr.number)
+            .collect()
+    }
+
+    #[test]
+    fn visit_marks_persist_for_whole_visit() {
+        let tmp = tempfile::tempdir().unwrap();
+        changed_state(tmp.path());
+        // Mine lives in w4; focusing w1 hides it.
+        let mut a = copy(ViewKind::Mine, tmp.path(), "w4:p1", "w1", "14:32:20");
+        assert!(a.visit.is_none());
+        look(&mut a, tmp.path(), "w4", "14:32:26");
+        assert_eq!(marked(&a, "14:32:26"), [1284, 1287, 1291, 412]);
+        // Stamped on disk, yet the marks stay for the whole visit.
+        look(&mut a, tmp.path(), "w4", "14:40:00");
+        assert_eq!(marked(&a, "14:40:00"), [1284, 1287, 1291, 412]);
+        assert_eq!(marked(&a, "14:50:00"), [1284, 1287, 1291, 412]);
+        let s = a.screen(at("14:50:00"));
+        assert_eq!(s.summary.changed, 4);
+        assert_eq!(s.summary.since, Some(at("14:18:00")));
+        let Body::Groups(gs) = s.body else { panic!() };
+        let r1287 = gs[0].rows.iter().find(|r| r.pr.number == 1287).unwrap();
+        assert_eq!(
+            r1287.change_lines,
+            [
+                "✗ CI failed: test-integration 17m ago",
+                "✗ @art requested changes 17m ago",
+                "◇ @claude[bot] commented 17m ago",
+                "◇ 3 new thread(s) 17m ago",
+            ]
+        );
+        // Leave and come back: nothing new since.
+        look(&mut a, tmp.path(), "w1", "14:51:00");
+        assert!(a.visit.is_none());
+        look(&mut a, tmp.path(), "w4", "14:52:00");
+        assert!(marked(&a, "14:52:00").is_empty());
+        let s = a.screen(at("14:52:00"));
+        assert_eq!((s.summary.changed, s.summary.since), (0, None));
+    }
+
+    #[test]
+    fn herdr_unreachable_ends_the_visit() {
+        let tmp = tempfile::tempdir().unwrap();
+        changed_state(tmp.path());
+        let mut a = copy(ViewKind::Mine, tmp.path(), "w4:p1", "w4", "14:32:26");
+        assert!(a.visit.is_some());
+        a.apply_snapshot(
+            Err("herdr not running".into()),
+            &mut crate::git::FixtureBranches::embedded(),
+            &StateDir::new(tmp.path().to_path_buf()),
+            at("14:33:00"),
+        );
+        assert!(a.visit.is_none());
+    }
+
+    #[test]
+    fn other_workspace_visit_does_not_clear() {
+        let tmp = tempfile::tempdir().unwrap();
+        changed_state(tmp.path());
+        // w1's copy is hidden (w2 in front) while w2's copy is visited.
+        let mut w1 = copy(ViewKind::Workspace, tmp.path(), "w1:p2", "w2", "14:32:20");
+        let w2 = copy(ViewKind::Workspace, tmp.path(), "w2:p1", "w2", "14:32:20");
+        assert_eq!(marked(&w2, "14:32:20"), [412]);
+        look(&mut w1, tmp.path(), "w1", "14:40:00");
+        assert_eq!(marked(&w1, "14:40:00"), [1284, 1287, 1291]);
+        // The docket copy's next visit finds nothing new.
+        let w2 = copy(ViewKind::Workspace, tmp.path(), "w2:p1", "w2", "14:41:00");
+        assert!(marked(&w2, "14:41:00").is_empty());
+    }
+
+    #[test]
+    fn mine_visit_does_not_clear_workspace() {
+        let tmp = tempfile::tempdir().unwrap();
+        changed_state(tmp.path());
+        let mine = copy(ViewKind::Mine, tmp.path(), "w4:p1", "w4", "14:32:20");
+        assert_eq!(marked(&mine, "14:32:20"), [1284, 1287, 1291, 412]);
+        let ws = copy(ViewKind::Workspace, tmp.path(), "w1:p2", "w1", "14:40:00");
+        assert_eq!(marked(&ws, "14:40:00"), [1284, 1287, 1291]);
+        // And the Workspace visit clears them in Mine; #412 was only seen in Mine.
+        let mine = copy(ViewKind::Mine, tmp.path(), "w4:p1", "w4", "14:41:00");
+        assert!(marked(&mine, "14:41:00").is_empty());
+    }
+
+    #[test]
+    fn workspace_visit_clears_mine_but_not_other_workspaces() {
+        let tmp = tempfile::tempdir().unwrap();
+        changed_state(tmp.path());
+        copy(ViewKind::Workspace, tmp.path(), "w1:p2", "w1", "14:40:00");
+        let mine = copy(ViewKind::Mine, tmp.path(), "w4:p1", "w4", "14:41:00");
+        assert_eq!(marked(&mine, "14:41:00"), [412]);
+    }
+
+    #[test]
+    fn changes_during_a_visit_clear_on_the_next() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = changed_state(tmp.path());
+        let mut a = copy(ViewKind::Mine, tmp.path(), "w4:p1", "w4", "14:32:20");
+        // #1279 changes during the visit: marked now, and on the next visit no more.
+        let mut prs = model::parse_detail(include_str!("../tests/fixtures/detail.json")).unwrap();
+        let p = prs.iter_mut().find(|p| p.number == 1279).unwrap();
+        p.head_oid = "new".into();
+        state
+            .update::<crate::changes::Changes>(crate::changes::CHANGES_FILE, |c| {
+                c.observe(&prs, at("14:35:00"))
+            })
+            .unwrap();
+        let mut cache = good_cache();
+        cache.prs = prs;
+        cache.fetched_at = Some(at("14:35:00"));
+        a.apply_fetch(FetchEvent::Done(cache), at("14:35:00"));
+        assert_eq!(marked(&a, "14:36:00"), [1284, 1287, 1291, 412, 1279]);
+        look(&mut a, tmp.path(), "w1", "14:37:00");
+        look(&mut a, tmp.path(), "w4", "14:38:00");
+        assert!(marked(&a, "14:38:00").is_empty());
+    }
+
+    #[test]
+    fn without_state_nothing_is_marked() {
+        let mut a = app();
+        a.set_visible(true, now());
+        assert!(marked(&a, "14:32:26").is_empty());
+        assert_eq!(a.screen(now()).summary.changed, 0);
     }
 }

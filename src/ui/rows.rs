@@ -386,8 +386,18 @@ fn row_lines(
     let hot = r.attention == Some(Attention::Urgent) && !stale;
     let dim = stale || pr.state != PrState::Open;
     let (glyph, att_style) = r.attention.map_or(("", Style::new()), theme::attention);
-    let em = if cur { theme::bold() } else { Style::new() };
-    let pointer = if cur { "▶" } else { " " };
+    // A changed row (spec §9): ✦ in the gutter unless the cursor's ▶ is there, # and title
+    // bold either way.
+    let em = if cur || r.changed {
+        theme::bold()
+    } else {
+        Style::new()
+    };
+    let pointer = match (cur, r.changed) {
+        (true, _) => "▶",
+        (false, true) => "✦",
+        (false, false) => " ",
+    };
     let num = format!("#{}", pr.number);
     let draft_dim = if pr.is_draft {
         theme::dim()

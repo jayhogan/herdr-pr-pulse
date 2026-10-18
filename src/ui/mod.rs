@@ -12,7 +12,7 @@ mod tests {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
     use ratatui::buffer::Buffer;
-    use ratatui::style::Color;
+    use ratatui::style::{Color, Modifier};
     use ratatui::text::Span;
 
     use super::rows;
@@ -1060,5 +1060,103 @@ mod tests {
             a.handle_key(key(c));
         }
         assert!(text(&draw(&a, 80, 20)).contains("no stacks match"));
+    }
+
+    // ------------------------------------------------------------ board 6: ✦ marks
+
+    /// Board 6 option A: away since 14:18, back (visible) at 14:32:26, cursor on #1295.
+    fn changed_app(kind: ViewKind, dir: &std::path::Path) -> App {
+        let state = StateDir::new(dir.to_path_buf());
+        crate::seed_board6(&state).unwrap();
+        let a = match kind {
+            ViewKind::Mine => app_with(|_| {}),
+            ViewKind::Workspace => ws_app_in(dir),
+        };
+        let mut a = a.with_state(state);
+        // A fresh visit against the seeded seen times.
+        a.set_visible(false, now());
+        a.set_visible(true, now());
+        a.move_cursor(-100);
+        a.move_cursor(4);
+        a
+    }
+
+    #[test]
+    fn changed_mine_120() {
+        let tmp = tempfile::tempdir().unwrap();
+        let a = changed_app(ViewKind::Mine, tmp.path());
+        insta::assert_snapshot!(text(&draw(&a, 120, 30)));
+    }
+
+    #[test]
+    fn changed_ws_44() {
+        let tmp = tempfile::tempdir().unwrap();
+        let a = changed_app(ViewKind::Workspace, tmp.path());
+        insta::assert_snapshot!(text(&draw(&a, 44, 30)));
+    }
+
+    #[test]
+    fn drawer_changed_120_on_1287() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut a = changed_app(ViewKind::Mine, tmp.path());
+        a.move_cursor(-2);
+        a.handle_key(key(' '));
+        insta::assert_snapshot!(text(&draw(&a, 120, 36)));
+    }
+
+    #[test]
+    fn changed_marks_are_bold_glyphs_and_cursor_wins() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut a = changed_app(ViewKind::Mine, tmp.path());
+        let buf = draw(&a, 120, 30);
+        let y = line_of(&buf, "#1284");
+        assert_eq!(buf[(0, y as u16)].symbol(), "✦");
+        assert!(buf[(0, y as u16)].modifier.contains(Modifier::BOLD));
+        // The # and title are bold too.
+        let col = (0..120)
+            .find(|&c| buf[(c, y as u16)].symbol() == "#")
+            .unwrap();
+        assert!(buf[(col, y as u16)].modifier.contains(Modifier::BOLD));
+        // Cursor on a changed row: ▶ takes the gutter.
+        a.move_cursor(-3); // #1284
+        let buf = draw(&a, 120, 30);
+        let y = line_of(&buf, "#1284");
+        assert_eq!(buf[(0, y as u16)].symbol(), "▶");
+        // Unchanged rows have neither.
+        let y = line_of(&buf, "#415");
+        assert_eq!(buf[(0, y as u16)].symbol(), " ");
+    }
+
+    #[test]
+    fn changed_summary_by_width() {
+        let tmp = tempfile::tempdir().unwrap();
+        let a = changed_app(ViewKind::Mine, tmp.path());
+        let summary = |w| text_lines(&draw(&a, w, 30))[1].clone();
+        assert!(
+            summary(120).ends_with("✦ 4 changed since you looked 14m ago"),
+            "{}",
+            summary(120)
+        );
+        assert!(summary(80).contains("✦"), "{}", summary(80));
+        assert!(summary(44).ends_with("✦4 new"), "{}", summary(44));
+        assert!(summary(34).ends_with("✦4 new"), "{}", summary(34));
+        // Nothing marked: no suffix.
+        assert!(!text_lines(&draw(&app(), 120, 30))[1].contains('✦'));
+    }
+
+    #[test]
+    fn stale_rows_keep_the_mark_dim() {
+        use crate::fetch::FetchEvent;
+        let tmp = tempfile::tempdir().unwrap();
+        let mut a = changed_app(ViewKind::Mine, tmp.path());
+        let cache = crate::store::Cache {
+            error: Some(crate::github::GhError::LoginExpired),
+            ..Default::default()
+        };
+        a.apply_fetch(FetchEvent::Done(cache), now());
+        let buf = draw(&a, 120, 30);
+        let y = line_of(&buf, "#1284");
+        assert_eq!(buf[(0, y as u16)].symbol(), "✦");
+        assert_eq!(buf[(0, y as u16)].fg, Color::DarkGray);
     }
 }

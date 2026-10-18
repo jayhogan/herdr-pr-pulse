@@ -10,6 +10,11 @@ use crate::model::{CiState, MergeState, Pr, PrState, ReviewState};
 
 const MAX_EVENTS: usize = 10;
 
+/// Fingerprints and events, written by the fetch worker.
+pub const CHANGES_FILE: &str = "changes.json";
+/// Per-PR seen times, written by each copy on a visit.
+pub const SEEN_FILE: &str = "seen.json";
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Fingerprint {
     pub ci: CiState,

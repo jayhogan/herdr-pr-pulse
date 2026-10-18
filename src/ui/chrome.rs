@@ -146,6 +146,34 @@ fn summary(screen: &Screen, d: Density, width: usize) -> Line<'static> {
         };
         spans.push(Span::styled(t, style));
     }
+    // ✦ what changed since you looked (board 6 A): right-aligned when wide, after the counts
+    // when narrow; nothing when nothing changed.
+    let n = screen.summary.changed;
+    if n > 0 {
+        let used: usize = spans.iter().map(Span::width).sum();
+        match d {
+            Wide | Medium => {
+                let since = screen.summary.since.map_or(String::new(), |t| {
+                    format!(" {} ago", ago::short(t, screen.now))
+                });
+                // The long form when it fits beside the counts, else shorter.
+                let t = [
+                    format!("✦ {n} changed since you looked{since} "),
+                    format!("✦ {n} changed "),
+                    format!("✦{n} new "),
+                ]
+                .into_iter()
+                .find(|t| used + 1 + dw(t) <= width)
+                .unwrap_or_default();
+                spans.push(Span::raw(" ".repeat(width.saturating_sub(used + dw(&t)))));
+                spans.push(Span::styled(t, theme::bold()));
+            }
+            Narrow | Tiny => {
+                spans.push(Span::raw("  "));
+                spans.push(Span::styled(format!("✦{n} new"), theme::bold()));
+            }
+        }
+    }
     // Narrow Workspace view: `⎇ branch` right-aligned (board 2); wider ones put it in the bar.
     if let (Some(b), Narrow | Tiny) = (workspace_branch(&screen.header), d) {
         let used: usize = spans.iter().map(Span::width).sum();

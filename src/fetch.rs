@@ -8,6 +8,7 @@ use std::time::{Duration as StdDuration, Instant};
 
 use chrono::{DateTime, Duration, Utc};
 
+use crate::changes::{CHANGES_FILE, Changes};
 use crate::github::{self, Gh, GhError, Target};
 use crate::model::Pr;
 use crate::store::{Cache, StateDir};
@@ -311,10 +312,22 @@ impl Worker {
         detail_chunked(self.gh.as_ref(), &targets)
     }
 
-    /// Writes the outcome into `cache.json` (under its lock, against the latest copy) and
-    /// returns the cache as written. A write failure is reported in the returned cache.
+    /// Records what changed in `changes.json`, then writes the outcome into `cache.json`
+    /// (each under its lock, against the latest copy) and returns the cache as written. A
+    /// cache write failure is reported in the returned cache.
     fn save(&self, result: Result<Change, GhError>) -> Cache {
         let now = Utc::now();
+        // Still under the fetch lock: one copy records each change, once (spec §9). A
+        // failed write only loses this fetch's events.
+        if let Ok(change) = &result {
+            let (prs, at) = match change {
+                Change::Full(c) => (&c.prs, c.fetched_at.unwrap_or(now)),
+                Change::Merge(prs) => (prs, now),
+            };
+            let _ = self
+                .state
+                .update(CHANGES_FILE, |c: &mut Changes| c.observe(prs, at));
+        }
         let apply = |c: &mut Cache| match &result {
             Ok(Change::Full(new)) => *c = new.clone(),
             // A recheck only refreshes its PRs; the error state belongs to the full fetch.
@@ -559,6 +572,39 @@ mod tests {
         // Every PR the response carried replaces or joins the cached ones, by id.
         assert_eq!(cache.prs.len(), 9);
         assert_ne!(cache.prs[0].title, "old title");
+    }
+
+    /// Two full fetches (detail-before, then detail) and a recheck: `changes.json` holds
+    /// board 6's changes, recorded by the worker that fetched.
+    #[test]
+    fn worker_records_changes() {
+        use crate::changes::{CHANGES_FILE, Changes};
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().to_path_buf();
+        let before = include_str!("../tests/fixtures/detail-before.json");
+        for (req, detail) in [
+            (FetchRequest::Forced, before),
+            (FetchRequest::Forced, DETAIL),
+            (FetchRequest::Recheck(vec!["PR_1287".into()]), DETAIL),
+        ] {
+            let gh = FakeGh::new()
+                .with("search", Ok(SEARCH.into()))
+                .with("detail", Ok(detail.into()));
+            let (tx, rx) = spawn(Box::new(gh), StateDir::new(dir.clone()));
+            tx.send(req).unwrap();
+            until_done(&rx);
+        }
+        let changes: Changes = StateDir::new(dir).load(CHANGES_FILE).unwrap();
+        assert_eq!(changes.prs.len(), 9);
+        let changed: Vec<&str> = changes
+            .prs
+            .iter()
+            .filter(|(_, t)| t.changed_at.is_some())
+            .map(|(id, _)| id.as_str())
+            .collect();
+        assert_eq!(changed, ["PR_1284", "PR_1287", "PR_1291", "PR_412"]);
+        // The recheck saw nothing new: each change recorded once.
+        assert_eq!(changes.prs["PR_1287"].events.len(), 4);
     }
 
     #[test]

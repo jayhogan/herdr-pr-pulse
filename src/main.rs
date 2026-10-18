@@ -16,6 +16,7 @@ mod workspaces;
 
 use std::env;
 use std::io;
+use std::path::Path;
 use std::process::{Command, ExitCode, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
@@ -26,6 +27,7 @@ use crossterm::event::{self, Event, KeyEventKind};
 use ratatui::DefaultTerminal;
 
 use crate::app::{Action, App, ViewKind};
+use crate::changes::{Changes, Seen};
 use crate::fetch::{FetchEvent, FetchRequest, Poller};
 use crate::git::{FixtureBranches, GitBranches};
 use crate::github::GhCli;
@@ -37,9 +39,12 @@ const SNAPSHOT_EVERY: Duration = Duration::from_secs(2);
 
 const SEARCH: &str = include_str!("../tests/fixtures/search.json");
 const DETAIL: &str = include_str!("../tests/fixtures/detail.json");
+const DETAIL_BEFORE: &str = include_str!("../tests/fixtures/detail-before.json");
 const SNAPSHOT: &str = include_str!("../tests/fixtures/snapshot.json");
 const WORKSPACES: &str = include_str!("../tests/fixtures/workspaces.json");
 const FIXTURE_FETCHED_AT: &str = "2026-10-17T14:32:08Z";
+/// Board 6: when you last looked, and when detail-before was fetched.
+const FIXTURE_LAST_LOOKED: &str = "2026-10-17T14:18:00Z";
 
 #[derive(Debug, PartialEq)]
 struct Args {
@@ -90,25 +95,23 @@ fn main() -> ExitCode {
 
 fn run(args: &Args) -> Result<(), String> {
     let app = App::new(args.kind, Local::now().offset().fix());
-    // Folds persist in the real state dir; fixtures mode keeps them in a throwaway one
-    // (created on the first fold, removed on exit).
-    let fixtures_dir = env::temp_dir().join(format!("herdr-pr-pulse-folds-{}", std::process::id()));
-    let mut app = app.with_state(if args.fixtures {
-        StateDir::new(fixtures_dir.clone())
+    // Folds, seen times and changes persist in the real state dir; fixtures mode keeps them
+    // in a throwaway one (removed on exit).
+    let fixtures_dir = env::temp_dir().join(format!("herdr-pr-pulse-state-{}", std::process::id()));
+    let (mut app, mut live) = if args.fixtures {
+        let app = fixture_app(app, &fixtures_dir, Utc::now()).inspect_err(|_| {
+            let _ = std::fs::remove_dir_all(&fixtures_dir);
+        })?;
+        (app, None)
     } else {
-        StateDir::default_location()
-    });
-    let mut live = if args.fixtures {
-        load_fixtures(&mut app)?;
-        None
-    } else {
+        let mut app = app.with_state(StateDir::default_location());
         let in_herdr = env::var("HERDR_ENV").is_ok_and(|v| v == "1");
         let pane = env::var("HERDR_PANE_ID").ok().filter(|p| !p.is_empty());
         let (true, Some(pane)) = (in_herdr, pane) else {
             return Err("not running inside a herdr pane".into());
         };
         app.set_own_pane(pane);
-        Some(Live::start())
+        (app, Some(Live::start()))
     };
     let mut terminal = ratatui::init();
     let result = event_loop(&mut terminal, &mut app, live.as_mut());
@@ -117,6 +120,17 @@ fn run(args: &Args) -> Result<(), String> {
         let _ = std::fs::remove_dir_all(&fixtures_dir);
     }
     result.map_err(|e| e.to_string())
+}
+
+/// Fixtures mode (board 6 option A): board 6's changes and seen times in the throwaway
+/// state `dir`, the fixture data, and the pane visible from the start.
+fn fixture_app(app: App, dir: &Path, now: DateTime<Utc>) -> Result<App, String> {
+    let state = StateDir::new(dir.to_path_buf());
+    seed_board6(&state)?;
+    let mut app = app.with_state(state);
+    load_fixtures(&mut app)?;
+    app.set_visible(true, now);
+    Ok(app)
 }
 
 fn load_fixtures(app: &mut App) -> Result<(), String> {
@@ -161,6 +175,35 @@ fn load_fixtures(app: &mut App) -> Result<(), String> {
         fetched_at,
     );
     let _ = std::fs::remove_dir_all(&dir); // the app keeps what it loaded
+    Ok(())
+}
+
+/// Board 6's scenario in `state`: detail-before fetched at 14:18, detail at 14:32:08, and
+/// every PR seen in both views at 14:18.
+fn seed_board6(state: &StateDir) -> Result<(), String> {
+    let time = |s: &str| {
+        DateTime::parse_from_rfc3339(s)
+            .map(|t| t.with_timezone(&Utc))
+            .map_err(|e| e.to_string())
+    };
+    let (looked, fetched) = (time(FIXTURE_LAST_LOOKED)?, time(FIXTURE_FETCHED_AT)?);
+    let before = model::parse_detail(DETAIL_BEFORE)?;
+    let after = model::parse_detail(DETAIL)?;
+    state
+        .update::<Changes>(changes::CHANGES_FILE, |c| {
+            c.observe(&before, looked);
+            c.observe(&after, fetched);
+            true
+        })
+        .map_err(|e| format!("{}: {e}", changes::CHANGES_FILE))?;
+    let ids: Vec<String> = after.iter().map(|p| p.id.clone()).collect();
+    state
+        .update::<Seen>(changes::SEEN_FILE, |s| {
+            changes::stamp(s, &ids, ViewKind::Workspace, looked);
+            changes::stamp(s, &ids, ViewKind::Mine, looked);
+            true
+        })
+        .map_err(|e| format!("{}: {e}", changes::SEEN_FILE))?;
     Ok(())
 }
 
@@ -354,6 +397,26 @@ mod tests {
             ws.screen(now).header.branch.as_deref(),
             Some("audit/kafka-producer")
         );
+    }
+
+    /// `--fixtures` opens on board 6 option A: visible, marks against 14:18.
+    #[test]
+    fn fixtures_show_board6() {
+        let now = DateTime::parse_from_rfc3339("2026-10-17T14:32:26Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let tmp = tempfile::tempdir().unwrap();
+        for (kind, marked) in [(ViewKind::Mine, 4), (ViewKind::Workspace, 3)] {
+            let dir = tmp.path().join(format!("{kind:?}"));
+            let app = fixture_app(App::new(kind, Utc::now().offset().fix()), &dir, now).unwrap();
+            let s = app.screen(now);
+            assert_eq!(s.summary.changed, marked, "{kind:?}");
+            assert_eq!(
+                s.summary.since.map(|t| t.to_rfc3339()),
+                Some("2026-10-17T14:18:00+00:00".into()),
+                "{kind:?}"
+            );
+        }
     }
 
     #[test]
