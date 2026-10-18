@@ -653,7 +653,7 @@ mod tests {
             let t = text(&draw(&a, width, 50));
             let flat = |s: &str| {
                 s.lines()
-                    .flat_map(|l| l.split(['│', '┌', '└']).last().map(str::to_string))
+                    .flat_map(|l| l.split(['│', '┌', '└']).next_back().map(str::to_string))
                     .collect::<Vec<_>>()
                     .join(" ")
                     .split_whitespace()
