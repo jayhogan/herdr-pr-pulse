@@ -19,6 +19,7 @@ use crate::ui::cells::{
     tree,
 };
 use crate::ui::chrome::{footer, top_lines};
+use crate::ui::drawer::drawer_lines;
 use crate::ui::theme;
 
 pub use crate::ui::cells::fit;
@@ -155,6 +156,12 @@ fn body_lines(screen: &Screen, width: u16) -> (Vec<Line<'static>>, usize, usize)
                 (cursor_line, cursor_end) = (out.len(), out.len() + row.len() - 1);
             }
             out.extend(row);
+            if screen.drawer_pr.as_deref() == Some(r.pr.id.as_str()) {
+                out.extend(drawer_lines(r, width as u16, screen.now));
+                if cur {
+                    cursor_end = out.len() - 1;
+                }
+            }
             selectable += 1;
         }
     }

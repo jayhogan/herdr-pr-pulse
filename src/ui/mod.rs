@@ -1,5 +1,6 @@
 mod cells;
 mod chrome;
+mod drawer;
 pub mod rows;
 pub mod theme;
 
@@ -410,5 +411,96 @@ mod tests {
         let y = line_of(&buf, "#1302");
         assert!(lines[y].contains('▶'), "{}", text(&buf));
         assert!(lines[y + 1].contains("? computing"), "{}", text(&buf));
+    }
+
+    fn key(c: char) -> crossterm::event::KeyEvent {
+        crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::Char(c),
+            crossterm::event::KeyModifiers::NONE,
+        )
+    }
+
+    fn drawer_app() -> App {
+        let mut a = app();
+        a.handle_key(key(' '));
+        a
+    }
+
+    #[test]
+    fn drawer_120_on_1287() {
+        insta::assert_snapshot!(text(&draw(&drawer_app(), 120, 30)));
+    }
+
+    #[test]
+    fn drawer_80_on_1287() {
+        insta::assert_snapshot!(text(&draw(&drawer_app(), 80, 30)));
+    }
+
+    #[test]
+    fn drawer_44_on_1287() {
+        insta::assert_snapshot!(text(&draw(&drawer_app(), 44, 34)));
+    }
+
+    #[test]
+    fn drawer_splits_people_and_bots() {
+        for width in [120, 80, 44] {
+            let t = text(&draw(&drawer_app(), width, 40));
+            let lines: Vec<&str> = t.lines().collect();
+            let pos = |needle: &str| lines.iter().position(|l| l.contains(needle));
+            if width < 80 {
+                let (people, bots) = (pos("People").unwrap(), pos("Bots").unwrap());
+                let (art, claude) = (pos("@art").unwrap(), pos("@claude[bot]").unwrap());
+                assert!(people < art && art < bots && bots < claude, "{width}:\n{t}");
+            } else {
+                assert!(t.contains("People") && t.contains("Bots"), "{width}:\n{t}");
+                assert!(t.contains("@claude[bot]"), "{width}:\n{t}");
+            }
+        }
+    }
+
+    #[test]
+    fn drawer_toggles_and_ignores_group_headers() {
+        let mut a = app();
+        a.move_cursor(-2); // group header
+        a.handle_key(key(' '));
+        assert!(!a.screen(now()).drawer_open);
+        a.move_cursor(2);
+        a.handle_key(key(' '));
+        assert!(a.screen(now()).drawer_open);
+        a.handle_key(key(' '));
+        assert!(!a.screen(now()).drawer_open);
+    }
+
+    #[test]
+    fn drawer_stays_on_its_pr_and_moves_with_space() {
+        let mut a = drawer_app();
+        a.move_cursor(1);
+        let buf = draw(&a, 120, 40);
+        // Still under #1287 although the cursor is on #1291.
+        assert!(line_of(&buf, "#1287") < line_of(&buf, "6m ago"));
+        assert!(line_of(&buf, "6m ago") < line_of(&buf, "#1291"));
+        a.handle_key(key(' '));
+        let buf = draw(&a, 120, 40);
+        assert!(line_of(&buf, "#1291") < line_of(&buf, "@kayla"));
+        assert!(!text(&buf).contains("6m ago"), "{}", text(&buf));
+    }
+
+    #[test]
+    fn drawer_scrolls_into_view_with_its_row() {
+        let a = drawer_app();
+        let buf = draw(&a, 120, 20);
+        assert!(text(&buf).contains("close"), "{}", text(&buf));
+    }
+
+    #[test]
+    fn drawer_draws_on_tiny_terminals() {
+        for width in 1..=40 {
+            draw(&drawer_app(), width, 20);
+        }
+    }
+
+    #[test]
+    fn drawer_without_drawer_leaves_rows_alone() {
+        assert!(!text(&draw(&app(), 120, 30)).contains("close"));
     }
 }

@@ -139,6 +139,8 @@ pub struct Screen {
     /// Index into selectable rows: group headers and PR rows of unfolded groups.
     pub cursor: usize,
     pub drawer_open: bool,
+    /// The PR whose drawer is open (when it is visible).
+    pub drawer_pr: Option<String>,
     pub help: bool,
     pub filter: Option<FilterState>,
     pub status: Option<String>,
@@ -168,6 +170,8 @@ pub struct App {
     scope: Scope,
     sort: SortOrder,
     cursor: usize,
+    /// Id of the PR the drawer is attached to.
+    drawer: Option<String>,
     folds: BTreeSet<String>,
     /// PR Pulse's own pane, for `⎇` and so a Workspace copy remembers its checkout.
     own_pane: Option<String>,
@@ -220,6 +224,7 @@ impl App {
             scope: Scope::Both,
             sort: SortOrder::Urgency,
             cursor: 0,
+            drawer: None,
             folds: BTreeSet::new(),
             own_pane: None,
             own_checkout: None,
@@ -247,6 +252,7 @@ impl App {
             }
             KeyCode::Char('j') | KeyCode::Down => self.move_cursor(1),
             KeyCode::Char('k') | KeyCode::Up => self.move_cursor(-1),
+            KeyCode::Char(' ') => self.toggle_drawer(),
             KeyCode::Char('r') => return Action::Refresh,
             KeyCode::Char('s') if self.kind == ViewKind::Mine => self.cycle_scope(),
             KeyCode::Char('S') => self.cycle_sort(),
@@ -259,6 +265,18 @@ impl App {
             _ => {}
         }
         Action::None
+    }
+
+    /// ␣: open the drawer under the selected PR row, or close it; nothing on a group header.
+    fn toggle_drawer(&mut self) {
+        let Some((_, Some(row))) = self.selected() else {
+            return;
+        };
+        if self.drawer.as_deref() == Some(row.pr.id.as_str()) {
+            self.drawer = None;
+        } else {
+            self.drawer = Some(row.pr.id);
+        }
     }
 
     /// ⏎: focus the selected stack's agent pane (spec §8).
@@ -375,6 +393,15 @@ impl App {
         });
         self.refresh_agents();
         self.restore(sel);
+        // The drawer goes when its PR does.
+        if let Some(id) = &self.drawer
+            && !self
+                .data
+                .as_ref()
+                .is_some_and(|d| d.groups.iter().flat_map(|g| &g.layers).any(|p| p.id == *id))
+        {
+            self.drawer = None;
+        }
     }
 
     pub fn apply_fetch(&mut self, ev: FetchEvent, now: DateTime<Utc>) {
@@ -709,6 +736,15 @@ impl App {
                 .sum(),
             _ => 0,
         };
+        let drawer_pr = match &body {
+            Body::Groups(gs) => self.drawer.clone().filter(|id| {
+                gs.iter()
+                    .filter(|g| !g.folded)
+                    .flat_map(|g| &g.rows)
+                    .any(|r| r.pr.id == *id)
+            }),
+            _ => None,
+        };
         Screen {
             header,
             summary: Summary {
@@ -719,7 +755,8 @@ impl App {
             banner: self.banner.clone(),
             body,
             cursor: self.cursor.min(selectable.saturating_sub(1)),
-            drawer_open: false,
+            drawer_open: drawer_pr.is_some(),
+            drawer_pr,
             help: false,
             filter: None,
             status: self.status.clone(),
