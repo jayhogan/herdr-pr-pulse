@@ -195,7 +195,8 @@ impl Worker {
             Err(_) => (None, true),
         };
         let cache = self.load();
-        let age = cache.fetched_at.map(|t| Utc::now() - t);
+        // The last attempt, failed or not: after an error each copy still tries once a minute.
+        let age = cache.fetched_at.max(cache.error_at).map(|t| Utc::now() - t);
         match decide(req, age, have_lock) {
             Plan::UseCache => self.send(FetchEvent::Done(cache)),
             Plan::WaitForOther => {
@@ -788,6 +789,26 @@ mod tests {
         assert_eq!(after_fail, after_ok);
         let on_disk: Cache = state.load(CACHE).unwrap();
         assert_eq!(on_disk, after_ok);
+    }
+
+    /// A failed fetch counts as an attempt: right after it, a scheduled request uses the
+    /// cache instead of calling gh again (one try per minute across copies).
+    #[test]
+    fn scheduled_after_error_uses_cache() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = StateDir::new(tmp.path().to_path_buf());
+        let before: Cache = state
+            .update(CACHE, |c: &mut Cache| {
+                c.fetched_at = Some(Utc::now() - Duration::seconds(600));
+                c.error = Some(GhError::Other("boom".into()));
+                c.error_at = Some(Utc::now());
+                true
+            })
+            .unwrap();
+        // No canned responses: a gh call would replace the error with "no canned ...".
+        let (tx, rx) = spawn(Box::new(FakeGh::new()), state);
+        tx.send(FetchRequest::Scheduled).unwrap();
+        assert_eq!(until_done(&rx), vec![FetchEvent::Done(before)]);
     }
 
     #[test]
