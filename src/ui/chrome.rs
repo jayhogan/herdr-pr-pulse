@@ -73,7 +73,7 @@ fn header_bar(h: &Header, screen: &Screen, d: Density, width: usize) -> Line<'st
     };
     let room = width.saturating_sub(dw(title) + dw(&right));
     let left = fit(&left, room);
-    let gap = room - dw(&left);
+    let gap = room.saturating_sub(dw(&left));
     let spans = vec![
         Span::styled(fit(title, width), theme::bold()),
         Span::raw(format!("{left}{}{right}", " ".repeat(gap))),

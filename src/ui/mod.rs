@@ -361,6 +361,19 @@ mod tests {
     }
 
     #[test]
+    fn tiny_workspace_on_merged_row_does_not_panic() {
+        let mut a = ws_app();
+        a.move_cursor(100); // the merged #1270 row is last
+        let buf = draw(&a, 44, 30);
+        assert!(text_lines(&buf)[line_of(&buf, "#1270")].contains('▶'));
+        for width in 1..=4 {
+            for height in 1..=3 {
+                draw(&a, width, height);
+            }
+        }
+    }
+
+    #[test]
     fn tiny_terminal_does_not_panic() {
         draw(&app(), 10, 3);
         draw(&app(), 1, 1);

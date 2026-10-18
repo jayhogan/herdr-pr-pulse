@@ -63,8 +63,8 @@ pub fn render(frame: &mut Frame, screen: &Screen, scroll: &mut usize) {
     let (body, cursor, cursor_end) = body_lines(screen, area.width);
 
     let top_h = (top.len() as u16).min(area.height);
-    let bottom_h = (bottom.len() as u16).min(area.height - top_h);
-    let body_h = area.height - top_h - bottom_h;
+    let bottom_h = (bottom.len() as u16).min(area.height.saturating_sub(top_h));
+    let body_h = area.height.saturating_sub(top_h + bottom_h);
     let h = body_h as usize;
     if h > 0 {
         if cursor < *scroll {
@@ -458,7 +458,10 @@ fn row_lines(
             };
             // A merged/closed layer's checks and reviews no longer matter: just say when.
             let line2 = if closed {
-                vec![cell(rail, 4, theme::dim()), Span::raw(fit(&m.0, width - 4))]
+                vec![
+                    cell(rail, 4, theme::dim()),
+                    Span::raw(fit(&m.0, width.saturating_sub(4))),
+                ]
             } else {
                 vec![
                     cell(rail, 4, theme::dim()),

@@ -228,16 +228,17 @@ fn run_action(app: &mut App, action: Action, live: Option<&mut Live>) -> bool {
     false
 }
 
-/// `gh pr view <url> --web`, not waited on (the child is reaped when PR Pulse exits).
+/// `gh pr view <url> --web`, not waited on by the UI: a detached thread reaps the child.
 fn open_in_browser(url: &str) -> Result<(), String> {
-    Command::new("gh")
+    let mut child = Command::new("gh")
         .args(["pr", "view", url, "--web"])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .map(|_| ())
-        .map_err(|e| format!("could not run gh: {e}"))
+        .map_err(|e| format!("could not run gh: {e}"))?;
+    std::thread::spawn(move || child.wait());
+    Ok(())
 }
 
 fn event_loop(
