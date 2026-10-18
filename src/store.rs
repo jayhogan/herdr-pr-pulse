@@ -2,6 +2,7 @@
 //! shared GitHub fetch cache and its fetch lock.
 
 use std::env;
+use std::ffi::OsString;
 use std::fs::{self, File, TryLockError};
 use std::io;
 use std::path::PathBuf;
@@ -26,6 +27,14 @@ pub struct Cache {
     pub error_at: Option<DateTime<Utc>>,
 }
 
+/// `$XDG_STATE_HOME`, else `$HOME/.local/state`. An empty or relative `XDG_STATE_HOME`
+/// counts as unset, as the XDG spec says.
+fn state_home(xdg: Option<OsString>, home: Option<OsString>) -> PathBuf {
+    xdg.map(PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .unwrap_or_else(|| PathBuf::from(home.unwrap_or_default()).join(".local/state"))
+}
+
 /// Directory of JSON files, each guarded by an advisory lock on `<name>.lock`.
 pub struct StateDir {
     dir: PathBuf,
@@ -38,12 +47,8 @@ impl StateDir {
 
     /// `${XDG_STATE_HOME:-~/.local/state}/herdr-pr-pulse`.
     pub fn default_location() -> Self {
-        let state_home = env::var_os("XDG_STATE_HOME")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| {
-                PathBuf::from(env::var_os("HOME").unwrap_or_default()).join(".local/state")
-            });
-        Self::new(state_home.join("herdr-pr-pulse"))
+        let home = state_home(env::var_os("XDG_STATE_HOME"), env::var_os("HOME"));
+        Self::new(home.join("herdr-pr-pulse"))
     }
 
     fn lock_file(&self, file_name: &str) -> io::Result<File> {
@@ -119,6 +124,20 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let state = StateDir::new(tmp.path().join("state"));
         (tmp, state)
+    }
+
+    #[test]
+    fn empty_xdg_state_home_counts_as_unset() {
+        let some = |s: &str| Some(OsString::from(s));
+        assert_eq!(
+            state_home(some("/x/state"), some("/home/j")),
+            PathBuf::from("/x/state")
+        );
+        let fallback = PathBuf::from("/home/j/.local/state");
+        assert_eq!(state_home(None, some("/home/j")), fallback);
+        assert_eq!(state_home(some(""), some("/home/j")), fallback);
+        // The XDG spec ignores a relative path too.
+        assert_eq!(state_home(some("state"), some("/home/j")), fallback);
     }
 
     #[test]
