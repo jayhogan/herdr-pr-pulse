@@ -14,7 +14,9 @@ pub(super) fn top_lines(screen: &Screen, d: Density, width: usize) -> Vec<Line<'
     out.push(summary(screen, d, width));
     if matches!(d, Wide | Medium) {
         out.push(Line::styled("─".repeat(width), theme::dim()));
-        out.push(column_titles(d, width));
+        if !screen.help {
+            out.push(column_titles(d, width));
+        }
     }
     out
 }
@@ -215,12 +217,30 @@ pub(super) fn footer(screen: &Screen, d: Density, width: usize) -> Vec<Line<'sta
             ]
         })
         .collect();
-    let hints = match &screen.status {
+    let help_keys = [
+        (" j/k", " scroll  "),
+        ("? or Esc", " close  "),
+        ("q", " quit"),
+    ];
+    let spans: Vec<Span> = if screen.help {
+        help_keys
+            .into_iter()
+            .flat_map(|(k, what)| {
+                [
+                    Span::styled(k.to_string(), theme::dim().patch(theme::bold())),
+                    Span::styled(what.to_string(), theme::dim()),
+                ]
+            })
+            .collect()
+    } else {
+        spans
+    };
+    let hints = match screen.status.as_ref().filter(|_| !screen.help) {
         Some(status) => Line::raw(fit(&format!(" {status}"), width)),
         None => Line::from(spans),
     };
     let mut lines = Vec::new();
-    if let Some(f) = &screen.filter {
+    if let Some(f) = screen.filter.as_ref().filter(|_| !screen.help) {
         lines.push(if f.editing {
             Line::raw(fit(&format!("/ {}▏", f.text), width))
         } else {

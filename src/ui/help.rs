@@ -1,7 +1,7 @@
 //! The `?` overlay: the legend of every glyph and the key list (board 5). Two columns from
 //! 100 columns up, one below; the color word column only when a column is 60 wide.
 
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
 use crate::attention::{AgentState, Attention};
@@ -42,7 +42,7 @@ fn dot(a: AgentState, color: &'static str, meaning: &'static str) -> Entry {
 
 fn sections() -> (Vec<Section>, Vec<Section>, Section) {
     let plain = Style::default();
-    let bold_red = theme::red().add_modifier(Modifier::BOLD);
+    let bold_red = theme::red_bold();
     let left = vec![
         Section {
             title: "ATTENTION  (gutter; stacks sort by worst layer)",
@@ -356,9 +356,4 @@ pub fn help_lines(width: u16) -> Vec<Line<'static>> {
         all.push(keys);
         stack(&all, width, false)
     }
-}
-
-/// The most the overlay can scroll: its tallest layout, one column.
-pub fn max_scroll() -> usize {
-    help_lines(40).len().saturating_sub(1)
 }

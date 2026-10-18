@@ -32,6 +32,10 @@ pub fn cyan() -> Style {
     Style::new().fg(Color::Cyan)
 }
 
+pub fn red_bold() -> Style {
+    red().add_modifier(Modifier::BOLD)
+}
+
 pub fn bold() -> Style {
     Style::new().add_modifier(Modifier::BOLD)
 }
@@ -47,7 +51,7 @@ pub fn bar() -> Style {
 pub fn attention(a: Attention) -> (&'static str, Style) {
     match a {
         Attention::Urgent => ("▲▲", hot_row()),
-        Attention::NeedsYou => ("▲", red().add_modifier(Modifier::BOLD)),
+        Attention::NeedsYou => ("▲", red_bold()),
         Attention::Nudge => ("△", yellow().add_modifier(Modifier::BOLD)),
         Attention::Ready => ("◆", green().add_modifier(Modifier::BOLD)),
         Attention::Waiting => ("◷", dim()),

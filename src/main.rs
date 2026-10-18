@@ -263,7 +263,11 @@ fn event_loop(
             live.tick(app);
         }
         let screen = app.screen(Utc::now());
-        terminal.draw(|frame| ui::rows::render(frame, &screen, &mut scroll))?;
+        let mut help_max = 0;
+        terminal.draw(|frame| help_max = ui::rows::render(frame, &screen, &mut scroll))?;
+        if screen.help {
+            app.set_help_max(help_max);
+        }
 
         // A key or resize wakes the loop early; otherwise redraw each tick.
         if event::poll(TICK)?

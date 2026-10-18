@@ -179,6 +179,8 @@ pub struct App {
     drawer: Option<String>,
     help: bool,
     help_scroll: usize,
+    /// How far the overlay can scroll, as last drawn.
+    help_max: usize,
     folds: BTreeSet<String>,
     filter: Option<FilterState>,
     /// Where folds persist (`folds.json`); without one they live in memory only.
@@ -250,6 +252,7 @@ impl App {
             drawer: None,
             help: false,
             help_scroll: 0,
+            help_max: usize::MAX,
             folds: BTreeSet::new(),
             filter: None,
             state: None,
@@ -382,7 +385,7 @@ impl App {
                 return Action::Quit;
             }
             KeyCode::Char('j') | KeyCode::Down => {
-                self.help_scroll = (self.help_scroll + 1).min(crate::ui::help::max_scroll());
+                self.help_scroll = (self.help_scroll + 1).min(self.help_max);
             }
             KeyCode::Char('k') | KeyCode::Up => {
                 self.help_scroll = self.help_scroll.saturating_sub(1)
@@ -390,6 +393,12 @@ impl App {
             _ => {}
         }
         Action::None
+    }
+
+    /// The renderer reports how far the help overlay can scroll; keep the offset within it.
+    pub fn set_help_max(&mut self, max: usize) {
+        self.help_max = max;
+        self.help_scroll = self.help_scroll.min(max);
     }
 
     /// ␣: open the drawer under the selected PR row, or close it; nothing on a group header.

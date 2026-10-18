@@ -100,7 +100,9 @@ mod tests {
         let screen = a.screen(now());
         let mut scroll = 0;
         terminal
-            .draw(|f| rows::render(f, &screen, &mut scroll))
+            .draw(|f| {
+                rows::render(f, &screen, &mut scroll);
+            })
             .unwrap();
         terminal.backend().buffer().clone()
     }
@@ -237,6 +239,40 @@ mod tests {
         let mut a = app();
         a.handle_key(key('?'));
         insta::assert_snapshot!(text(&draw(&a, 44, 90)));
+    }
+
+    #[test]
+    fn help_scroll_stops_at_the_real_end() {
+        let mut a = app();
+        a.handle_key(key('?'));
+        let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        let mut frame = |a: &mut App| {
+            let screen = a.screen(now());
+            let mut s = 0;
+            let mut max = 0;
+            terminal
+                .draw(|f| max = rows::render(f, &screen, &mut s))
+                .unwrap();
+            a.set_help_max(max);
+            text_lines(terminal.backend().buffer())
+        };
+        frame(&mut a);
+        for _ in 0..200 {
+            a.handle_key(key('j'));
+            frame(&mut a);
+        }
+        let end = frame(&mut a);
+        a.handle_key(key('k'));
+        assert_ne!(frame(&mut a)[3], end[3], "first k moves immediately");
+    }
+
+    #[test]
+    fn help_hides_column_titles_and_shows_help_footer() {
+        let mut a = app();
+        a.handle_key(key('?'));
+        let t = text(&draw(&a, 120, 50));
+        assert!(!t.contains("LAYER #"));
+        assert!(t.contains("j/k scroll  ? or Esc close  q quit"), "{t}");
     }
 
     #[test]

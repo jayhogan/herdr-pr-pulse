@@ -91,4 +91,4 @@ expression: "text(&draw(&a, 44, 90))"
 
 
 
-j/k move ␣ details ⏎ jump o open ? keys
+ j/k scroll  ? or Esc close  q quit

@@ -55,7 +55,9 @@ fn short_repo(repo: &str) -> &str {
 
 /// Draws the screen: header bar and summary on top, key hints at the bottom, and the
 /// groups in between, scrolled so the cursor stays visible.
-pub fn render(frame: &mut Frame, screen: &Screen, scroll: &mut usize) {
+/// Returns, while the help overlay is open, how far it can scroll (else 0), so the caller
+/// can clamp its stored offset.
+pub fn render(frame: &mut Frame, screen: &Screen, scroll: &mut usize) -> usize {
     let area = frame.area();
     let d = density(area.width);
     let width = area.width as usize;
@@ -79,8 +81,13 @@ pub fn render(frame: &mut Frame, screen: &Screen, scroll: &mut usize) {
         }
     }
     // The overlay has its own scroll offset; the body's is left alone for when it closes.
+    let help_max = if screen.help {
+        body.len().saturating_sub(h)
+    } else {
+        0
+    };
     let scrolled = if screen.help {
-        screen.help_scroll.min(body.len().saturating_sub(h))
+        screen.help_scroll.min(help_max)
     } else {
         *scroll = (*scroll).min(body.len().saturating_sub(h));
         *scroll
@@ -94,6 +101,7 @@ pub fn render(frame: &mut Frame, screen: &Screen, scroll: &mut usize) {
         rect(top_h, body_h),
     );
     frame.render_widget(Paragraph::new(bottom), rect(top_h + body_h, bottom_h));
+    help_max
 }
 
 /// The scrollable body lines and the index of the cursor's (first) line.
