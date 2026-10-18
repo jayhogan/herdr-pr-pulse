@@ -39,15 +39,24 @@ fn header_bar(h: &Header, screen: &Screen, d: Density, width: usize) -> Line<'st
         plural(h.stacks, "stack", "stacks")
     );
     let branch = workspace_branch(h).map_or(String::new(), |b| format!(" · ⎇ {b}"));
-    let left = match d {
-        Wide => format!(
+    // Mine narrowed by `s`: said at every density, or nothing would tell that half is hidden.
+    let narrowed = match (h.view, h.scope) {
+        (ViewKind::Mine, Scope::Authored) => Some(("authored", "auth")),
+        (ViewKind::Mine, Scope::Assigned) => Some(("assigned", "asgn")),
+        _ => None,
+    };
+    let left = match (d, narrowed) {
+        (Wide, _) => format!(
             "│ {scope} · {counts} · {}{branch}",
             plural(h.repos, "repo", "repos")
         ),
         // Nothing listed (loading, empty): the scope says more than "0 PRs" (board 4).
-        Medium if h.stacks == 0 => format!("│ {scope}{branch}"),
-        Medium => format!("│ {counts}{branch}"),
-        Narrow | Tiny => String::new(),
+        (Medium, _) if h.stacks == 0 => format!("│ {scope}{branch}"),
+        (Medium, Some((word, _))) => format!("│ {word} · {counts}{branch}"),
+        (Medium, None) => format!("│ {counts}{branch}"),
+        (Narrow, Some((word, _))) => format!(" · {word}"),
+        (Tiny, Some((_, short))) => format!(" · {short}"),
+        (Narrow | Tiny, None) => String::new(),
     };
     let sort = match h.sort {
         SortOrder::Urgency => "urgency",

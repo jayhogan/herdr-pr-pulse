@@ -101,6 +101,29 @@ mod tests {
         a
     }
 
+    /// After `s` the header says which half of Mine is listed, at every density.
+    #[test]
+    fn header_names_a_narrowed_scope() {
+        let mut a = app();
+        // Both halves: only Wide has room to say so.
+        for width in [80, 44, 34] {
+            let header = text_lines(&draw(&a, width, 20))[0].clone();
+            assert!(
+                !header.contains("auth") && !header.contains("as"),
+                "{width}: {header}"
+            );
+        }
+        for (want, tiny) in [("authored", "auth"), ("assigned", "asgn")] {
+            a.cycle_scope();
+            for width in [120, 80, 44] {
+                let header = text_lines(&draw(&a, width, 20))[0].clone();
+                assert!(header.contains(want), "{width}: {header}");
+            }
+            let header = text_lines(&draw(&a, 34, 20))[0].clone();
+            assert!(header.contains(tiny), "34: {header}");
+        }
+    }
+
     fn draw(a: &App, width: u16, height: u16) -> Buffer {
         let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
         let screen = a.screen(now());

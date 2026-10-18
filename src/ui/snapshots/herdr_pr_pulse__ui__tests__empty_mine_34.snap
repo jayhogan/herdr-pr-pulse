@@ -1,9 +1,9 @@
 ---
 source: src/ui/mod.rs
-assertion_line: 730
+assertion_line: 750
 expression: "text(&draw(&empty_mine_app(), 34, 14))"
 ---
- PR Pulse                    ↻ 4s
+ PR Pulse · auth             ↻ 4s
 
   ✓ Nothing is waiting on you.
     No open PRs authored by you in
