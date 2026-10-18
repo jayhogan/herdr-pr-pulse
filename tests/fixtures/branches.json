@@ -1,0 +1,5 @@
+{
+  "/work/heard-ts-audit": { "repo": "heard/heard-ts", "branch": "audit/kafka-producer", "toplevel": "/work/heard-ts-audit" },
+  "/work/docket-thread": { "repo": "heard/docket", "branch": "thread-model/model", "toplevel": "/work/docket-thread" },
+  "/work/heard-ts-notes": { "repo": "heard/heard-ts", "branch": "notes/tokenize", "toplevel": "/work/heard-ts-notes" }
+}

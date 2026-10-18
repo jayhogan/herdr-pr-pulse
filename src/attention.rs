@@ -1,16 +1,8 @@
 //! Attention levels, reasons and mergeable-through counts (spec §6-§7).
 
+pub use crate::herdr::AgentState;
 use crate::model::{CiState, MergeState, Pr};
 use crate::stacks::Group;
-
-/// Moves to `herdr.rs` in Task 12 with a re-export.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AgentState {
-    Working,
-    Blocked,
-    Idle,
-    Unknown,
-}
 
 /// Ordered so that `Urgent` is the worst.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
