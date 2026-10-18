@@ -6,7 +6,7 @@ expression: "text(&draw(&app(), 80, 30))"
  ▲▲1 urgent  ▲1 need you  ◆1 merge  △3 nudge  ◷2 waiting
 ────────────────────────────────────────────────────────────────────────────────
   ! LYR #       TITLE                 CI            TH  REV   MERGE
-▾ heard-ts·audit ◆▲△◷ ○  ok through 1/4 · L2 CI ✗
+▾ heard-ts·audit ◆▲△◷ ○  ◆ merge stack · 1 of 4 · L2 CI ✗
    ╭─ main
   ◆ ├1  #1284 ● audit: schema for au… ✓ 9/9         ·   ✓ ok  ✓ merge now
 ▶▲▲ ├2  #1287 ● audit: kafka produce… ✗ test-integ… ◇3  ✗ chg ◷ on #1284

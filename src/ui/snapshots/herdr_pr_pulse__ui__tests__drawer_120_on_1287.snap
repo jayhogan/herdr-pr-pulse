@@ -6,7 +6,7 @@ expression: "text(&draw(&drawer_app(), 120, 30))"
  ▲▲ 1 urgent    ▲ 1 need you    ◆ 1 ready to merge    △ 3 nudge    ◷ 2 waiting
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   !  LAYER #      STATE   TITLE                          CI                   THRD  REVIEW         MERGE
-▾ heard/heard-ts · audit  4 layers  ◆▲△◷ ○   mergeable through layer 1 of 4 · stuck at L2: CI failing, changes requested
+▾ heard/heard-ts · audit  4 layers  ◆▲△◷ ○   ◆ merge stack · 1 of 4 · stuck at L2: CI failing, changes requested
      ╭─ main
   ◆  ├─ 1  #1284  ● ready audit: schema for audit_log t… ✓ pass 9/9           · 0   ✓ approved     ✓ clean · merge now
 ▶ ▲▲ ├─ 2  #1287  ● ready audit: kafka producer for aud… ✗ test-integration   ◇ 3   ✗ changes req  ◷ waiting on #1284

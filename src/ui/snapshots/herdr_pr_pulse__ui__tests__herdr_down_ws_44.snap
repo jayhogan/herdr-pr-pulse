@@ -1,11 +1,10 @@
 ---
 source: src/ui/mod.rs
-assertion_line: 1011
 expression: text(&buf)
 ---
  PR Pulse                             ↻ 18s
  ✗ herdr not responding · agent state ?   r
-▾ audit ◆▲△◷ ?  through L1 of 4
+▾ audit ◆▲△◷ ?  ◆ stack 1/4
  ╭ main
  ├1 ◆  #1284 audit: schema for audit_log…
  │  ✓ ci 9/9      ✓ ok   ·0   ✓ clean

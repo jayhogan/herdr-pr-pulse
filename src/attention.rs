@@ -58,6 +58,16 @@ pub fn ready_in_order(pr: &Pr) -> bool {
         && !pr.is_draft
 }
 
+/// GitHub's stack merge checks rules for the whole stack, so the per-PR BLOCKED of a native
+/// stack layer says nothing about whether the stack can merge; only the API can't tell us.
+fn mergeable_alone_or_as_stack(pr: &Pr) -> bool {
+    match pr.merge {
+        MergeState::Clean | MergeState::HasHooks | MergeState::Unstable => true,
+        MergeState::Blocked => pr.stack.is_some(),
+        _ => false,
+    }
+}
+
 pub fn level(pr: &Pr, is_bottom_open: bool, agent: Option<AgentState>) -> Attention {
     if ci_failing(pr) && agent == Some(AgentState::Idle) {
         Attention::Urgent
@@ -65,13 +75,7 @@ pub fn level(pr: &Pr, is_bottom_open: bool, agent: Option<AgentState>) -> Attent
         Attention::NeedsYou
     } else if is_behind(pr) || pr.unresolved_threads > 0 || has_no_reviewers(pr) {
         Attention::Nudge
-    } else if is_bottom_open
-        && ready_in_order(pr)
-        && matches!(
-            pr.merge,
-            MergeState::Clean | MergeState::HasHooks | MergeState::Unstable
-        )
-    {
+    } else if is_bottom_open && ready_in_order(pr) && mergeable_alone_or_as_stack(pr) {
         Attention::Ready
     } else {
         Attention::Waiting
@@ -264,6 +268,50 @@ mod tests {
         p.changes_requested = false;
         p.unresolved_threads = 0;
         assert_eq!(level(&p, true, None), Attention::Ready);
+    }
+
+    fn blocked_bottom() -> Pr {
+        let mut p = pr(1284);
+        p.merge = MergeState::Blocked;
+        p.ci.state = CiState::Passing;
+        p.approved = Some(true);
+        p.changes_requested = false;
+        p.unresolved_threads = 0;
+        p
+    }
+
+    #[test]
+    fn native_stack_bottom_blocked_is_ready() {
+        let p = blocked_bottom();
+        assert!(p.stack.is_some());
+        assert_eq!(level(&p, true, None), Attention::Ready);
+    }
+
+    #[test]
+    fn native_stack_upper_blocked_is_not_ready() {
+        assert_eq!(level(&blocked_bottom(), false, None), Attention::Waiting);
+    }
+
+    #[test]
+    fn native_stack_unknown_is_not_ready() {
+        let mut p = blocked_bottom();
+        p.merge = MergeState::Unknown;
+        assert_eq!(level(&p, true, None), Attention::Waiting);
+    }
+
+    #[test]
+    fn standalone_blocked_is_not_ready() {
+        let mut p = blocked_bottom();
+        p.stack = None;
+        assert_eq!(level(&p, true, None), Attention::Waiting);
+    }
+
+    #[test]
+    fn native_blocked_with_failing_ci_still_needs_you() {
+        let mut p = blocked_bottom();
+        p.ci.state = CiState::Failing;
+        assert_eq!(level(&p, true, None), Attention::NeedsYou);
+        assert_eq!(level(&p, true, Some(AgentState::Idle)), Attention::Urgent);
     }
 
     #[test]

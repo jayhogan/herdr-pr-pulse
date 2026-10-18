@@ -4,7 +4,7 @@ expression: "text(&draw(&ws_app(), 34, 30))"
 ---
  PR Pulse                   ↻ 18s
  ▲▲1 ◆1 △1 ◷1      ⎇ audit/kafka…
-▾ audit ◆▲△◷ ○ L1/4 ok
+▾ audit ◆▲△◷ ○ ◆ stack 1/4
  ╭ main
  ├1 ◆  #1284 audit: schema for…
  │  ✓ 9/9     ✓   ·0   ✓ clean

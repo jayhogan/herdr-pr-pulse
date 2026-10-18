@@ -48,6 +48,8 @@ struct Item {
     left: Vec<Span<'static>>,
     gap: &'static str,
     right: Option<Span<'static>>,
+    /// Side by side: shown under the columns across their full width, not clipped to one.
+    full_width: bool,
 }
 
 impl Item {
@@ -56,6 +58,7 @@ impl Item {
             left,
             gap: "",
             right: None,
+            full_width: false,
         }
     }
 
@@ -208,6 +211,15 @@ fn merge_section(row: &RowView, mode: Mode) -> Section {
         None => format!("behind {base}"),
     };
     let (glyph, text, glyph_style, text_style) = match (pr.merge, row.waiting_on) {
+        (MergeState::Blocked, None) if row.stack_ready.is_some() => {
+            let (k, n) = row.stack_ready.unwrap_or_default();
+            (
+                "✓",
+                format!("ready to merge as a stack ({k} of {n})"),
+                theme::green(),
+                theme::green(),
+            )
+        }
         (MergeState::Behind, _) => ("↓", behind, theme::yellow(), theme::yellow()),
         (MergeState::Dirty, _) => (
             "⚠",
@@ -235,6 +247,14 @@ fn merge_section(row: &RowView, mode: Mode) -> Section {
         span(text, text_style),
     ]);
     let mut items = vec![main];
+    if row.stack_ready.is_some() {
+        let mut note = Item::new(vec![span(
+            "GitHub marks this PR blocked on its own; rules are checked when the stack merges",
+            theme::dim(),
+        )]);
+        note.full_width = true;
+        items.push(note);
+    }
     if pr.merge != MergeState::Dirty {
         items.push(Item::new(vec![
             span("✓ ", theme::green()),
@@ -302,7 +322,7 @@ fn side_by_side(
     closing: bool,
 ) -> Vec<Line<'static>> {
     let (pre, cols): (&str, [usize; 3]) = match mode {
-        Mode::Wide => ("     │  ", [32, 36, 30]),
+        Mode::Wide => ("     │  ", [32, 36, 36]),
         _ => {
             let last = width.saturating_sub(6 + 2 + 20 + 24 + 4).max(24);
             ("    │ ", [20, 24, last])
@@ -314,6 +334,14 @@ fn side_by_side(
         pre.to_string()
     };
     let mut sections = sections;
+    let mut notes = Vec::new();
+    for s in &mut sections {
+        let (full, rest): (Vec<Item>, Vec<Item>) = std::mem::take(&mut s.items)
+            .into_iter()
+            .partition(|i| i.full_width);
+        s.items = rest;
+        notes.extend(full);
+    }
     let extra: Vec<Section> = sections.split_off(3.min(sections.len()));
     let mut cols: Vec<(usize, Section)> = cols.into_iter().zip(sections).collect();
     let rows = cols.iter().map(|(_, s)| s.items.len()).max().unwrap_or(0);
@@ -346,6 +374,9 @@ fn side_by_side(
         out.push(line("│ ", cells));
     }
     let total = width.saturating_sub(dw(&pre) + 2);
+    for note in notes {
+        out.push(line("│ ", vec![clip(inline(note), total)]));
+    }
     for s in extra {
         out.push(line(
             "│ ",

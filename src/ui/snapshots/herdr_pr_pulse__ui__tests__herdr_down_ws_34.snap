@@ -1,11 +1,10 @@
 ---
 source: src/ui/mod.rs
-assertion_line: 942
 expression: "text(&draw(&a, 34, 30))"
 ---
  PR Pulse                   ↻ 18s
  ✗ herdr not responding · agen… r
-▾ audit ◆▲△◷ ? L1/4 ok
+▾ audit ◆▲△◷ ? ◆ stack 1/4
  ╭ main
  ├1 ◆  #1284 audit: schema for…
  │  ✓ 9/9     ✓   ·0   ✓ clean

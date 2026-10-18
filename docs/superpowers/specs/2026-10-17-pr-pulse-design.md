@@ -151,7 +151,9 @@ Keep the last good data, dimmed, with stale age in the header.
   *ready in order*: CI passing, approved (or `reviewDecision` null, i.e. reviews not required),
   not conflicting, not draft. `gh stack merge` merges bottom-up, so this is how far a merge would
   get today. Only the bottom layer gets ◆ (the one actionable now); upper ready-in-order layers
-  show ◷ waiting. The header shows the first blocking reason at layer k+1.
+  show ◷ waiting. The header shows the first blocking reason at layer k+1. For a native stack
+  with k ≥ 1 the header reads `◆ merge stack · k of N` (`◆ stack k/N` when narrow) followed by
+  that reason; other groups keep "mergeable through layer k of N".
 - Layers authored by someone else stay in the stack (needed for N and "waiting on #n") and show
   `@author` after the title; they get an attention level but don't count toward the summary.
 - A stack ranks by its worst layer.
@@ -171,14 +173,21 @@ Per open PR, highest wins:
 - **▲ needs you**: CI failing, changes requested, or conflicts with base (`DIRTY`).
 - **△ nudge**: behind base, unresolved threads > 0, or non-draft with no reviewers (no requests
   and no reviews). Drafts never get the no-reviewers nudge.
-- **◆ ready**: bottom of stack (or standalone), CI passing, approved, `CLEAN`.
+- **◆ ready**: bottom open layer of a stack (or standalone), ready in order (§7), and merge
+  `CLEAN`/`HAS_HOOKS`/`UNSTABLE`. On a *native* stack's bottom layer `BLOCKED` also qualifies:
+  GitHub evaluates rules for the whole stack ("Able to merge as a stack"), so the per-PR
+  `mergeStateStatus` can read BLOCKED although the stack merges (no API exposes stack-level
+  mergeability). `UNKNOWN` stays not ready. Standalone PRs and branch chains keep BLOCKED →
+  not ready.
 - **◷ waiting**: everything else (upper layer blocked by a lower one, reviews pending, CI
   running).
 
 `mergeStateStatus` → merge column: `CLEAN`, `HAS_HOOKS`, `UNSTABLE` → ✓ clean (UNSTABLE means
 only non-required checks fail); `BLOCKED` → ⊘ blocked; `BEHIND` → ↓ n; `DIRTY` → ⚠ conflicts;
 `UNKNOWN` → ? computing; `DRAFT` → shown via ◌ state, merge column from the other fields. For ◆,
-`CLEAN`/`HAS_HOOKS`/`UNSTABLE` all qualify.
+`CLEAN`/`HAS_HOOKS`/`UNSTABLE` all qualify. A ◆ native-stack bottom layer that GitHub reports
+BLOCKED shows `✓ stack ok` in the merge column, and its drawer says "ready to merge as a stack
+(k of N)" with a dim note that GitHub marks the PR blocked on its own.
 
 Agent state and ▲▲ apply in both views (Mine uses herdr data from all workspaces). When herdr is
 unreachable, agent state is unknown and ▲▲ cannot fire; rows fall back to ▲.

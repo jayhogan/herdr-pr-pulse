@@ -199,6 +199,10 @@ pub(super) fn merge(r: &RowView, d: Density, now: DateTime<Utc>) -> Text {
         let t = pick(d, ["◷ waiting on #", "◷ on #", "◷ on #", "◷#"]) + &n.to_string();
         return (t, theme::dim());
     }
+    if r.stack_ready.is_some() {
+        let t = pick(d, ["✓ stack ok", "✓ stack ok", "✓ stack ok", "✓ stack"]);
+        return (t, theme::green().patch(theme::bold()));
+    }
     if r.attention == Some(Attention::Ready) {
         let t = pick(
             d,

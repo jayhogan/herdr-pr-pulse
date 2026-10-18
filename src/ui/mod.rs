@@ -596,6 +596,54 @@ mod tests {
         insta::assert_snapshot!(text(&draw(&drawer_app(), 44, 34)));
     }
 
+    /// The audit stack's bottom #1284 as GitHub reports a ready stack's bottom: BLOCKED.
+    fn stack_blocked_app() -> App {
+        app_with(|prs| {
+            for p in prs.iter_mut() {
+                if p.number == 1284 || p.number == 1279 {
+                    p.merge = model::MergeState::Blocked;
+                }
+            }
+        })
+    }
+
+    #[test]
+    fn native_stack_blocked_bottom_reads_as_stack_ok() {
+        for width in [120, 44] {
+            let t = text(&draw(&stack_blocked_app(), width, 30));
+            let lines: Vec<&str> = t.lines().collect();
+            let at = |needle: &str| lines.iter().position(|l| l.contains(needle)).unwrap();
+            let header = if width >= 80 {
+                "◆ merge stack"
+            } else {
+                "◆ stack 1/4"
+            };
+            assert!(t.contains(header), "{width}:\n{t}");
+            // Two-line rows at 44 keep the merge cell on the line after #1284.
+            let row = lines[at("#1284")..at("#1287")].join("\n");
+            assert!(row.contains("✓ stack ok"), "{width}: {row}");
+            assert!(!row.contains("blocked"), "{width}: {row}");
+            let row = lines[at("#1279")..].join("\n");
+            assert!(row.contains("⊘ blocked"), "{width}: {row}");
+        }
+    }
+
+    #[test]
+    fn drawer_explains_stack_ready() {
+        let mut a = stack_blocked_app();
+        a.move_cursor(1);
+        a.handle_key(key(' '));
+        let t = text(&draw(&a, 120, 40));
+        assert!(t.contains("✓ ready to merge as a stack (1 of 4)"), "{t}");
+        assert!(
+            t.contains(
+                "GitHub marks this PR blocked on its own; rules are checked when the stack merges"
+            ),
+            "{t}"
+        );
+        assert!(!t.contains("blocked by branch rules"), "{t}");
+    }
+
     #[test]
     fn drawer_splits_people_and_bots() {
         for width in [120, 80, 44] {

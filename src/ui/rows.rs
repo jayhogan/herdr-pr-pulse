@@ -229,7 +229,20 @@ fn merge_story(g: &GroupView, d: Density) -> Vec<Span<'static>> {
         spans.push(Span::styled(t, reason_style(first)));
         return spans;
     }
+    let native_ready = g.kind == GroupKind::Native && m >= 1;
     match d {
+        Wide | Medium if native_ready => {
+            spans.push(Span::styled(
+                "◆ merge stack",
+                theme::green().patch(theme::bold()),
+            ));
+            spans.push(Span::raw(" · "));
+            spans.push(Span::styled(format!("{m} of {open}"), theme::bold()));
+        }
+        Narrow | Tiny if native_ready => spans.push(Span::styled(
+            format!("◆ stack {m}/{open}"),
+            theme::green().patch(theme::bold()),
+        )),
         Wide => {
             spans.push(Span::raw("mergeable through "));
             spans.push(Span::styled(format!("layer {m} of {open}"), theme::bold()));

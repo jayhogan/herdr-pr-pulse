@@ -110,6 +110,9 @@ pub struct RowView {
     pub changed: bool,
     pub change_lines: Vec<String>,
     pub foreign_author: Option<String>,
+    /// `(k, N)` when this native-stack layer is Ready although GitHub marks it BLOCKED on its
+    /// own: the stack merges as a whole.
+    pub stack_ready: Option<(usize, usize)>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -947,6 +950,8 @@ impl App {
         // The group's attention follows its agent, wherever that agent's pane is.
         let agent_state = dot.as_ref().map(|d| d.state);
         let mut layer = 0;
+        let through = mergeable_through(g);
+        let open_total = g.open_layers().count();
         let last = g.layers.len().saturating_sub(1);
         let rows: Vec<RowView> = g
             .layers
@@ -960,11 +965,15 @@ impl App {
                     layer += 1;
                 }
                 let (changed, change_lines) = self.change_marks(&p.id, now);
+                let attention = open.then(|| level(p, layer == 1, agent_state));
                 RowView {
                     pr: p.clone(),
                     layer: if open { layer } else { 0 },
                     is_last: i == last,
-                    attention: open.then(|| level(p, layer == 1, agent_state)),
+                    attention,
+                    stack_ready: (attention == Some(Attention::Ready)
+                        && p.merge == MergeState::Blocked)
+                        .then_some((through, open_total)),
                     waiting_on: if open { g.waiting_on(p.number) } else { None },
                     agent: if here { dot.clone() } else { None },
                     checked_out: here,
@@ -985,7 +994,7 @@ impl App {
             rank: minimap.iter().copied().max().unwrap_or(Attention::Waiting),
             open_layers: minimap.len(),
             minimap,
-            mergeable_through: mergeable_through(g),
+            mergeable_through: through,
             blocker: first_blocker(g),
             agent: dot,
             rows,
