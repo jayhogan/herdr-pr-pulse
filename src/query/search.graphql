@@ -1,0 +1,10 @@
+query PrPulseSearch {
+  viewer { login }
+  authored: search(query: "author:@me is:open is:pr archived:false", type: ISSUE, first: 50) {
+    nodes { ... on PullRequest { id headRefName repository { nameWithOwner } } }
+  }
+  assigned: search(query: "assignee:@me is:open is:pr archived:false", type: ISSUE, first: 50) {
+    nodes { ... on PullRequest { id headRefName repository { nameWithOwner } } }
+  }
+  rateLimit { cost remaining }
+}

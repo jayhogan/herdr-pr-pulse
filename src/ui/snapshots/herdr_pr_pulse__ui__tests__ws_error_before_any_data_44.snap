@@ -1,0 +1,19 @@
+---
+source: src/ui/mod.rs
+assertion_line: 973
+expression: t
+---
+ PR Pulse                         ✗ offline
+ ✗ GitHub login expired.                  r
+   Fix: Run gh auth login in any pane, then…
+ ✗ Matching panes to PRs
+   ✓ 3 agent panes in this workspace
+   ✗ No PR data yet.  Press r to retry.
+
+
+
+
+
+
+
+j/k move ␣ details ⏎ jump o open ? keys

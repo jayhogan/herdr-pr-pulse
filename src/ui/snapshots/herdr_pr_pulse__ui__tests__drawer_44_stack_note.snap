@@ -1,0 +1,17 @@
+---
+source: src/ui/mod.rs
+expression: region
+---
+▶├1 ◆  #1284 audit: schema for audit_log…
+ │  ✓ ci 9/9      ✓ ok   ·0   ✓ stack ok
+ │  ┌ CI ───────────────────────────────────
+ │  │ ✓ 9 checks pass
+ │  ├ Reviews ──────────────────────────────
+ │  │ ✓ @kayla   approved
+ │  ├ Merge ────────────────────────────────
+ │  │ ✓ ready to merge as a stack (1 of 4)
+ │  │ GitHub marks this PR blocked on its
+ │  │ own; rules are checked when the stack
+ │  │ merges
+ │  │ ✓ no conflicts
+ │  └ ␣ close

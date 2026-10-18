@@ -1,0 +1,34 @@
+---
+source: src/ui/mod.rs
+expression: "text(&draw(&ws_app(), 34, 30))"
+---
+ PR Pulse                   ↻ 18s
+ ▲▲1 ◆1 △1 ◷1      ⎇ audit/kafka…
+▾ audit ◆▲△◷ ○ ◆ stack 1/4
+ ╭ main
+ ├1 ◆  #1284 audit: schema for…
+ │  ✓ 9/9     ✓   ·0   ✓ clean
+▶├2 ▲▲ #1287 audit: kafka … ⎇ ○
+ │  ✗ 1/9     ✗   ◇3   ◷#1284
+ ├3 △  #1291 audit: consumer w…
+ │  ✓ 9/9     ○2  ◇1   ◷#1287
+ └4 ◷  #1295 audit: viewer UI
+    ◐ 5/9     ∅   ·0   ◷#1291
+
+▾ standalone ○
+ ──    #1270 audit: feature fl…
+    ⊙ merged 2d ago
+
+
+
+
+
+
+
+
+
+
+
+
+
+j/k ␣ info ⏎ jump ? keys

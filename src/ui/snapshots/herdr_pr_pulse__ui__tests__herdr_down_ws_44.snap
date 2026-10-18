@@ -1,0 +1,34 @@
+---
+source: src/ui/mod.rs
+expression: text(&buf)
+---
+ PR Pulse                             ↻ 18s
+ ✗ herdr not responding · agent state ?   r
+▾ audit ◆▲△◷ ?  ◆ stack 1/4
+ ╭ main
+ ├1 ◆  #1284 audit: schema for audit_log…
+ │  ✓ ci 9/9      ✓ ok   ·0   ✓ clean
+▶├2 ▲  #1287 audit: kafka producer for a…
+ │  ✗ ci 1/9 fail ✗ chg  ◇3   ◷ on #1284
+ ├3 △  #1291 audit: consumer writes to a…
+ │  ✓ ci 9/9      ○ 2    ◇1   ◷ on #1287
+ └4 ◷  #1295 audit: viewer UI
+    ◐ ci 5/9      ∅ none ·0   ◷ on #1291
+
+▾ standalone ?
+ ──    #1270 audit: feature flags
+    ⊙ merged 2d ago
+   ? = agent state unknown; ⏎ disabled
+
+
+
+
+
+
+
+
+
+
+
+
+j/k move ␣ details ⏎ jump o open ? keys

@@ -1,0 +1,94 @@
+---
+source: src/ui/mod.rs
+expression: "text(&draw(&a, 44, 90))"
+---
+ PR Pulse                             ↻ 18s
+ ▲▲1 ▲1 ◆1 △3 ◷2
+ ATTENTION (gutter; stacks sort by worst
+ layer)
+ ▲▲       urgent: CI failing + agent idle
+ ▲        needs you: CI ✗, changes,
+          conflicts
+ △        nudge: behind base, threads, no
+          reviewer
+ ◆        ready to merge now
+ ◷        waiting: lower layer, reviews or
+          CI
+
+ STATE
+ ●        ready for review
+ ◌        draft
+
+ CI
+ ✓ pass   all checks pass (n/m shown)
+ ✗ name   failing; first failed check named
+ ◐ n/m    running; n of m checks done
+ – none   no checks configured or pushed
+ ·1 opt ✗ optional check failing
+
+ THREADS
+ ◇ n      n unresolved review threads
+ · 0      none unresolved
+
+ REVIEW
+ ✓        approved
+ ✗        changes requested
+ ○ n      pending; n reviewers yet to review
+ ∅        no reviewers assigned (dim on
+          drafts)
+
+ MERGE (upper layers show waiting instead)
+ ✓        clean, can merge
+ ⊘        blocked by branch rules (e.g.
+          review)
+ ↓ n      behind base by n commits
+ ⚠        conflicts with base
+ ?        unknown, GitHub still computing
+ ◷ #n     waiting on #n below it in the
+          stack
+
+ AGENT DOT (Workspace view, end of PR line
+ 1)
+ ●        working
+ ◉        blocked, waiting on your input
+ ○        idle (red row if its CI is
+          failing)
+ ?        agent state unknown (herdr not
+          reachable)
+
+ STACKS
+ ▾ ▸      expanded / collapsed (h/l or ←/→)
+ ╭─       base branch (main)
+ ├─ n     layer n, counted up from main
+ ◆▲◷◷     minimap, one glyph per layer, base
+          first
+
+ CHROME
+ ▶        cursor row
+ ✦        changed since you looked
+  bar     header: view, scope, refresh time
+ ⠹        fetching; ✗ offline + stale age
+
+ KEYS
+ j/k ↑/↓  move
+ ⏎        jump to agent pane
+ o        open PR in browser
+ r        refresh
+ s        authored/assigned (Mine)
+ h/l ←/→  fold/unfold stack
+ ␣        details drawer
+ /        filter
+ S        sort
+ ?        help (close with ? or Esc)
+ q        quit
+
+
+
+
+
+
+
+
+
+
+ j/k scroll  ? or Esc close  q quit

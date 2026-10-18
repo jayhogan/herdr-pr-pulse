@@ -1,0 +1,19 @@
+---
+source: src/ui/mod.rs
+assertion_line: 687
+expression: text(&buf)
+---
+ PR Pulse │ authored + assigned                                      ⠹ loading…
+
+────────────────────────────────────────────────────────────────────────────────
+  ⠹ Fetching your pull requests   2 of 3 repos
+    ✓ heard/heard-ts   5 PRs · checks loaded
+    ⠹ heard/docket     reading checks + stack order…
+    · heard/sage       queued
+  ░░ ░░░░ ░░░░░░░░░░░░░░░░░░  ░░░░░░░  ░░░  ░░░░░░  ░░░░░░░░░░
+  ░░ ░░░░ ░░░░░░░░░░░░░░░░░░  ░░░░░░░  ░░░  ░░░░░░  ░░░░░░░░░░
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+ j/k ␣ info ⏎ jump o open r ↻ s mine⇄asgn S sort h/l fold ? help

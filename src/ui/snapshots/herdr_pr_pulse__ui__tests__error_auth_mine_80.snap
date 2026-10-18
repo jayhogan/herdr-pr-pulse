@@ -1,0 +1,34 @@
+---
+source: src/ui/mod.rs
+expression: text(&buf)
+---
+ PR Pulse │ 8 PRs · 4 stacks                              ✗ offline · stale 14m
+ ✗ GitHub login expired. Showing data from 14:18 (14m old).             r retry
+   Fix: Run gh auth login in any pane, then press r.
+────────────────────────────────────────────────────────────────────────────────
+  ! LYR #       TITLE                 CI            TH  REV   MERGE
+▾ heard-ts·audit ◆▲△◷ ○  ◆ merge stack · 1 of 4 · L2 CI ✗
+   ╭─ main
+  ◆ ├1  #1284 ● audit: schema for au… ✓ 9/9         ·   ✓ ok  ✓ merge now
+▶▲▲ ├2  #1287 ● audit: kafka produce… ✗ test-integ… ◇3  ✗ chg ◷ on #1284
+  △ ├3  #1291 ● audit: consumer writ… ✓ 9/9         ◇1  ○ 2   ◷ on #1287
+  ◷ └4  #1295 ◌ audit: viewer UI      ◐ 5/9         ·   ∅     ◷ on #1291
+
+▾ docket·thread-model ▲◷ ●  ok through 0/2 · L1 ⚠ conflicts
+   ╭─ main
+  ▲ ├1  #412  ● thread model          ✓ 6/6         ◇2  ✓ ok  ⚠ conflicts
+  ◷ └2  #415  ● thread sidebar        ✓ 6/6         ·   ○ 1   ◷ on #412
+
+▾ heard-ts·standalone △  update needed · behind main 6
+  △ ──  #1279 ● pii: redact SSN in t… ✓ 7/7         ·   ✓ ok  ↓ behind 6
+
+▾ heard-ts·standalone △ ◉  ∅ reviewers
+  △ ──  #1302 ● notes: tokenizer      ◐ 4/7         ·   ∅     ? computing
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+ j/k ␣ info ⏎ jump o open r ↻ s mine⇄asgn S sort h/l fold ? help

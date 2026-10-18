@@ -1,0 +1,35 @@
+# Appended to every detail query. Task 9 adds, per alias (they need the PR's own id or head ref):
+#   statusCheckRollup { state contexts(first: 100) { nodes {
+#     __typename
+#     ... on CheckRun { name status conclusion completedAt isRequired(pullRequestId: "<id>") }
+#     ... on StatusContext { name: context state completedAt: createdAt isRequired(pullRequestId: "<id>") } } } }
+#   baseRef { name compare(headRef: "<headRefName>") { behindBy } }
+fragment prFields on PullRequest {
+  id
+  number
+  title
+  url
+  state
+  isDraft
+  closedAt
+  updatedAt
+  author { login __typename }
+  assignees(first: 10) { nodes { login } }
+  repository { nameWithOwner }
+  headRefName
+  headRefOid
+  baseRefName
+  mergeStateStatus
+  reviewDecision
+  stackEntry {
+    position
+    stack { id number entries(first: 50) { nodes { position pullRequest { id } } } }
+  }
+  reviewThreads(first: 50) {
+    nodes { isResolved comments(first: 1) { nodes { author { login __typename } } } }
+  }
+  latestReviews(first: 20) { nodes { state submittedAt author { login __typename } } }
+  reviewRequests(first: 20) {
+    nodes { requestedReviewer { __typename ... on User { login } ... on Bot { login } ... on Team { slug } } }
+  }
+}

@@ -1,0 +1,19 @@
+---
+source: src/ui/mod.rs
+assertion_line: 750
+expression: "text(&draw(&empty_mine_app(), 34, 14))"
+---
+ PR Pulse · auth             ↻ 4s
+
+  ✓ Nothing is waiting on you.
+    No open PRs authored by you in
+    heard/docket, heard/heard-ts.
+
+    s show PRs assigned to you (2)
+
+
+
+
+
+
+j/k ␣ info ⏎ jump ? keys

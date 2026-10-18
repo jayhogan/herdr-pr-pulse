@@ -1,0 +1,82 @@
+{
+  "data": {
+    "viewer": {
+      "login": "jayhogan"
+    },
+    "authored": {
+      "nodes": [
+        {
+          "id": "PR_1284",
+          "headRefName": "audit/schema",
+          "repository": {
+            "nameWithOwner": "heard/heard-ts"
+          }
+        },
+        {
+          "id": "PR_1287",
+          "headRefName": "audit/kafka-producer",
+          "repository": {
+            "nameWithOwner": "heard/heard-ts"
+          }
+        },
+        {
+          "id": "PR_1291",
+          "headRefName": "audit/consumer",
+          "repository": {
+            "nameWithOwner": "heard/heard-ts"
+          }
+        },
+        {
+          "id": "PR_1295",
+          "headRefName": "audit/viewer",
+          "repository": {
+            "nameWithOwner": "heard/heard-ts"
+          }
+        },
+        {
+          "id": "PR_412",
+          "headRefName": "thread-model/model",
+          "repository": {
+            "nameWithOwner": "heard/docket"
+          }
+        },
+        {
+          "id": "PR_1279",
+          "headRefName": "pii/redact-ssn",
+          "repository": {
+            "nameWithOwner": "heard/heard-ts"
+          }
+        },
+        {
+          "id": "PR_1302",
+          "headRefName": "notes/tokenize",
+          "repository": {
+            "nameWithOwner": "heard/heard-ts"
+          }
+        }
+      ]
+    },
+    "assigned": {
+      "nodes": [
+        {
+          "id": "PR_415",
+          "headRefName": "thread-model/sidebar",
+          "repository": {
+            "nameWithOwner": "heard/docket"
+          }
+        },
+        {
+          "id": "PR_1279",
+          "headRefName": "pii/redact-ssn",
+          "repository": {
+            "nameWithOwner": "heard/heard-ts"
+          }
+        }
+      ]
+    },
+    "rateLimit": {
+      "cost": 1,
+      "remaining": 4991
+    }
+  }
+}

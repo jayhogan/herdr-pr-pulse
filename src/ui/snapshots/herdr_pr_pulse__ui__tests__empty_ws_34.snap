@@ -1,0 +1,19 @@
+---
+source: src/ui/mod.rs
+assertion_line: 925
+expression: "text(&draw(&empty_ws_app(tmp.path()), 34, 14))"
+---
+ PR Pulse                    ↻ 4s
+                           ⎇ main
+ ○ No PRs in this workspace
+   3 agent panes, none on a PR br…
+   ● w1:p1 main   ○ w1:p2 main
+   ○ w1:p3 spike/kafka-re… (no PR)
+   Open a PR from a branch to see
+   it here.
+
+
+
+
+
+j/k ␣ info ⏎ jump ? keys

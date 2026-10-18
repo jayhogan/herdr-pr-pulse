@@ -1,0 +1,54 @@
+---
+source: src/ui/mod.rs
+expression: t
+---
+ PR Pulse │ authored + assigned · 8 PRs · 4 stacks · 2 repos                   sort: urgency ▾  │  ↻ 14:32:08 · 18s ago
+ ▲▲ 1 urgent    ▲ 1 need you    ◆ 1 ready to merge    △ 3 nudge    ◷ 2 waiting
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ATTENTION (gutter; stacks sort by worst layer)              MERGE (upper layers show waiting instead)
+ ▲▲       red bg      urgent: CI failing + agent idle        ✓        green       clean, can merge
+ ▲        red bold    needs you: CI ✗, changes, conflicts    ⊘        yellow      blocked by branch rules (e.g. review)
+ △        yellow      nudge: behind base, threads, no        ↓ n      yellow      behind base by n commits
+                      reviewer                               ⚠        red bold    conflicts with base
+ ◆        green bold  ready to merge now                     ?        dim         unknown, GitHub still computing
+ ◷        dim         waiting: lower layer, reviews or CI    ◷ #n     dim         waiting on #n below it in the stack
+
+ STATE                                                       AGENT DOT (Workspace view, end of PR line 1)
+ ●        default     ready for review                       ●        green       working
+ ◌        dim         draft                                  ◉        yellow bold blocked, waiting on your input
+                                                             ○        dim         idle (red row if its CI is failing)
+ CI                                                          ?        dim         agent state unknown (herdr not
+ ✓ pass   green       all checks pass (n/m shown)                                 reachable)
+ ✗ name   red bold    failing; first failed check named
+ ◐ n/m    cyan        running; n of m checks done            STACKS
+ – none   dim         no checks configured or pushed         ▾ ▸      bold        expanded / collapsed (h/l or ←/→)
+ ·1 opt ✗ dim         optional check failing                 ╭─       dim         base branch (main)
+                                                             ├─ n     dim         layer n, counted up from main
+ THREADS                                                     ◆▲◷◷     mixed       minimap, one glyph per layer, base
+ ◇ n      yellow      n unresolved review threads                                 first
+ · 0      dim         none unresolved
+                                                             CHROME
+ REVIEW                                                      ▶        bold        cursor row
+ ✓        green       approved                               ✦        bold        changed since you looked
+ ✗        red         changes requested                       bar     reverse     header: view, scope, refresh time
+ ○ n      dim         pending; n reviewers yet to review     ⠹        cyan        fetching; ✗ offline + stale age
+ ∅        yellow      no reviewers assigned (dim on drafts)
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ KEYS
+ j/k ↑/↓  move                                               ␣        details drawer
+ ⏎        jump to agent pane                                 /        filter
+ o        open PR in browser                                 S        sort
+ r        refresh                                            ?        help (close with ? or Esc)
+ s        authored/assigned (Mine)                           q        quit
+ h/l ←/→  fold/unfold stack
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ j/k scroll  ? or Esc close  q quit
