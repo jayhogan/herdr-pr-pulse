@@ -4,7 +4,7 @@ expression: "text(&draw(&a, 34, 30))"
 ---
  PR Pulse                   ↻ 18s
  ✗ herdr not responding · agen… r
-▾ audit ◆▲△◷ ? ◆ stack 1/4
+▾ audit ◆▲△◷ ? L1/4 ok
  ╭ main
  ├1 ◆  #1284 audit: schema for…
  │  ✓ 9/9     ✓   ·0   ✓ clean

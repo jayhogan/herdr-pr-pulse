@@ -234,7 +234,8 @@ fn merge_story(g: &GroupView, d: Density) -> Vec<Span<'static>> {
         .iter()
         .find(|r| r.layer == 1)
         .is_some_and(|r| r.pr.merge == MergeState::Unknown);
-    let native_ready = g.kind == GroupKind::Native && m >= 1 && !bottom_unknown;
+    // Only a stack that merges whole gets "◆ merge stack"; a partly ready one says how far.
+    let native_ready = g.kind == GroupKind::Native && m >= 1 && m == open && !bottom_unknown;
     match d {
         Wide | Medium if native_ready => {
             spans.push(Span::styled(

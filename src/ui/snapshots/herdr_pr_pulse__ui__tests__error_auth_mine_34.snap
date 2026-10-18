@@ -5,7 +5,7 @@ expression: "text(&draw(&error_auth_app(), 34, 30))"
  PR Pulse   ✗ offline · stale 14m
  ✗ GitHub login expired.        r
    Fix: Run gh auth login in any …
-▾ audit ◆▲△◷ ○ ◆ stack 1/4
+▾ audit ◆▲△◷ ○ L1/4 ok
  ╭ main
  ├1 ◆  #1284 audit: schema for…
  │  ✓ 9/9     ✓   ·0   ✓ clean

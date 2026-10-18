@@ -210,6 +210,8 @@ pub struct App {
     cursor: usize,
     /// Id of the PR the drawer is attached to.
     drawer: Option<String>,
+    /// The lone PR whose drawer was opened by itself, so a ␣ close sticks across refreshes.
+    auto_drawer: Option<String>,
     help: bool,
     help_scroll: usize,
     /// How far the overlay can scroll, as last drawn.
@@ -303,6 +305,7 @@ impl App {
             sort: SortOrder::Urgency,
             cursor: 0,
             drawer: None,
+            auto_drawer: None,
             help: false,
             help_scroll: 0,
             help_max: usize::MAX,
@@ -606,6 +609,30 @@ impl App {
         }
     }
 
+    /// In the Workspace view, a workspace with exactly one open PR opens that PR's drawer
+    /// and puts the cursor on it — once per PR, so closing it with ␣ sticks.
+    fn auto_open_drawer(&mut self) {
+        if self.kind != ViewKind::Workspace {
+            return;
+        }
+        let Body::Groups(gs) = self.screen(self.data_now()).body else {
+            return;
+        };
+        let mut open = gs
+            .iter()
+            .flat_map(|g| &g.rows)
+            .filter(|r| r.pr.state == PrState::Open);
+        let lone = match (open.next(), open.next()) {
+            (Some(r), None) => Some(r.pr.id.clone()),
+            _ => None,
+        };
+        if lone.is_some() && lone != self.auto_drawer {
+            self.drawer = lone.clone();
+            self.restore(lone.clone().map(Selection::Pr));
+        }
+        self.auto_drawer = lone;
+    }
+
     /// ⏎: focus the selected stack's agent pane (spec §8).
     fn jump(&mut self) -> Action {
         if !self.herdr_ok {
@@ -734,6 +761,7 @@ impl App {
         {
             self.drawer = None;
         }
+        self.auto_open_drawer();
     }
 
     pub fn apply_fetch(&mut self, ev: FetchEvent, now: DateTime<Utc>) {
@@ -846,6 +874,7 @@ impl App {
         self.read_snapshot(snap, branches, state);
         self.refresh_agents();
         self.restore(sel);
+        self.auto_open_drawer();
         match visible {
             Some(v) => self.set_visible(v, now),
             None if self.herdr_misses >= 2 => self.set_visible(false, now),
@@ -1586,6 +1615,11 @@ mod tests {
 
     /// The Workspace copy in the audit workspace (own pane w1:p2), memory from the fixture.
     fn ws_app(dir: &Path) -> App {
+        ws_app_in(dir, "w1:p2")
+    }
+
+    /// A Workspace copy whose own pane is `own`, memory from the fixture.
+    fn ws_app_in(dir: &Path, own: &str) -> App {
         let state = &StateDir::new(dir.to_path_buf());
         let base = app();
         let mut a = App::new(ViewKind::Workspace, FixedOffset::east_opt(0).unwrap());
@@ -1595,7 +1629,7 @@ mod tests {
             include_str!("../tests/fixtures/workspaces.json"),
         )
         .unwrap();
-        a.set_own_pane("w1:p2".into());
+        a.set_own_pane(own.into());
         a.set_path_exists(|_| true);
         let snap = crate::herdr::parse_snapshot(include_str!("../tests/fixtures/snapshot.json"));
         a.apply_snapshot(
@@ -1637,6 +1671,55 @@ mod tests {
         assert_eq!(a.screen(now()).header.scope, Scope::Authored);
         a.handle_key(key(KeyCode::Char('S')));
         assert_eq!(a.screen(now()).header.sort, SortOrder::Updated);
+    }
+
+    #[test]
+    fn single_pr_workspace_opens_its_drawer() {
+        let tmp = tempfile::tempdir().unwrap();
+        // The notes workspace (w3) only has #1302.
+        let a = ws_app_in(tmp.path(), "w3:p1");
+        let s = a.screen(now());
+        assert_eq!(s.drawer_pr.as_deref(), Some("PR_1302"));
+        assert_eq!(a.selected_pr().map(|p| p.number), Some(1302));
+    }
+
+    #[test]
+    fn multi_pr_workspace_keeps_the_drawer_closed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let a = ws_app(tmp.path());
+        assert_eq!(a.screen(now()).drawer_pr, None);
+    }
+
+    #[test]
+    fn closed_single_pr_drawer_stays_closed_across_refreshes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut a = ws_app_in(tmp.path(), "w3:p1");
+        assert_eq!(a.screen(now()).drawer_pr.as_deref(), Some("PR_1302"));
+        a.handle_key(key(KeyCode::Char(' ')));
+        assert_eq!(a.screen(now()).drawer_pr, None);
+        refetch(&mut a, |_| true);
+        assert_eq!(a.screen(now()).drawer_pr, None);
+    }
+
+    #[test]
+    fn mine_view_never_opens_the_drawer_by_itself() {
+        let mut a = app();
+        refetch(&mut a, |p| p.number == 1279);
+        assert_eq!(a.screen(now()).drawer_pr, None);
+    }
+
+    /// Feeds the app its own PRs again (those `keep` accepts), as a fresh fetch would.
+    fn refetch(a: &mut App, keep: impl Fn(&Pr) -> bool) {
+        let d = a.data.as_ref().unwrap();
+        let prs: Vec<Pr> = d
+            .groups
+            .iter()
+            .flat_map(|g| g.layers.iter().filter(|p| keep(p)).cloned())
+            .collect();
+        let authored: Vec<String> = d.authored.iter().cloned().collect();
+        let assigned: Vec<String> = d.assigned.iter().cloned().collect();
+        let (viewer, at) = (d.viewer.clone(), d.fetched_at);
+        a.set_prs(prs, &authored, &assigned, &viewer, at);
     }
 
     #[test]

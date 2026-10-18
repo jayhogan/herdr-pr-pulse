@@ -216,7 +216,12 @@ fn merge_section(row: &RowView, mode: Mode) -> Section {
     let (glyph, text, glyph_style, text_style) = match (pr.merge, row.waiting_on, row.stack_ready) {
         (MergeState::Blocked, None, Some((k, n))) => (
             "✓",
-            format!("ready to merge as a stack ({k} of {n})"),
+            // "as a stack" only when the whole stack can go; otherwise say how far it can.
+            if k == n {
+                format!("ready to merge as a stack ({k} of {n})")
+            } else {
+                format!("ready to merge · the stack can merge through layer {k} of {n}")
+            },
             theme::green(),
             theme::green(),
         ),
