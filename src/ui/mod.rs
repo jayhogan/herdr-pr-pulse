@@ -1,3 +1,5 @@
+mod cells;
+mod chrome;
 pub mod rows;
 pub mod theme;
 
