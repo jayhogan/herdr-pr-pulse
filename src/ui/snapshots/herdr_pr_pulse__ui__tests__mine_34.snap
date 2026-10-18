@@ -1,0 +1,34 @@
+---
+source: src/ui/mod.rs
+expression: "text(&draw(&app(), 34, 30))"
+---
+ PR Pulse                   ↻ 18s
+ ▲▲1 ▲1 ◆1 △3 ◷2
+▾ audit ◆▲△◷ L1/4 ok
+ ╭ main
+ ├1 ◆  #1284 audit: schema for…
+ │  ✓ 9/9     ✓   ·0   ✓ clean
+▶├2 ▲▲ #1287 audit: kafka prod…
+ │  ✗ 1/9     ✗   ◇3   ◷#1284
+ ├3 △  #1291 audit: consumer w…
+ │  ✓ 9/9     ○2  ◇1   ◷#1287
+ └4 ◷  #1295 audit: viewer UI
+    ◐ 5/9     ∅   ·0   ◷#1291
+
+▾ thread-model ▲◷ L0/2 ok
+ ╭ main
+ ├1 ▲  #412  thread model
+ │  ✓ 6/6     ✓   ◇2   ⚠ conflict
+ └2 ◷  #415  thread sidebar
+    ✓ 6/6     ○1  ·0   ◷#412
+
+▾ standalone △
+ ── △  #1279 pii: redact SSN i…
+    ✓ 7/7     ✓   ·0   ↓ 6
+
+▾ standalone △
+ ── △  #1302 notes: tokenizer
+    ◐ 4/7     ∅   ·0   ? …
+
+
+j/k ␣ info ⏎ jump ? keys

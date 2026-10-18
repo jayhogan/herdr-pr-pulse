@@ -1,0 +1,34 @@
+---
+source: src/ui/mod.rs
+expression: "text(&draw(&app(), 120, 30))"
+---
+ PR Pulse │ authored + assigned · 8 PRs · 4 stacks · 2 repos                   sort: urgency ▾  │  ↻ 14:32:08 · 18s ago
+ ▲▲ 1 urgent    ▲ 1 need you    ◆ 1 ready to merge    △ 3 nudge    ◷ 2 waiting
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  !  LAYER #      STATE   TITLE                          CI                   THRD  REVIEW         MERGE
+▾ heard/heard-ts · audit  4 layers  ◆▲△◷   mergeable through layer 1 of 4 · stuck at L2: CI failing, changes requested
+     ╭─ main
+  ◆  ├─ 1  #1284  ● ready audit: schema for audit_log t… ✓ pass 9/9           · 0   ✓ approved     ✓ clean · merge now
+▶ ▲▲ ├─ 2  #1287  ● ready audit: kafka producer for aud… ✗ test-integration   ◇ 3   ✗ changes req  ◷ waiting on #1284
+  △  ├─ 3  #1291  ● ready audit: consumer writes to aud… ✓ pass 9/9           ◇ 1   ○ pending 2    ◷ waiting on #1287
+  ◷  └─ 4  #1295  ◌ draft audit: viewer UI               ◐ running 5/9        · 0   ∅ no reviewers ◷ waiting on #1291
+
+▾ heard/docket · thread-model  2 layers  ▲◷     mergeable through layer 0 of 2 · L1 conflicts with main
+     ╭─ main
+  ▲  ├─ 1  #412   ● ready thread model                   ✓ pass 6/6           ◇ 2   ✓ approved     ⚠ conflicts
+  ◷  └─ 2  #415   ● ready thread sidebar                 ✓ pass 6/6           · 0   ○ pending 1    ◷ waiting on #412
+
+▾ heard/heard-ts · standalone  1 PR      △      mergeable after update · behind main by 6
+  △  ── 1  #1279  ● ready pii: redact SSN in transcripts ✓ pass 7/7 ·1 opt ✗  · 0   ✓ approved     ↓ behind main 6
+
+▾ heard/heard-ts · standalone  1 PR      △      no reviewers
+  △  ── 1  #1302  ● ready notes: tokenizer               ◐ running 4/7        · 0   ∅ no reviewers ? computing
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ j/k move  ␣ details  ⏎ jump  o open  r refresh  s authored⇄assigned  S sort  h/l fold  / filter  ? help

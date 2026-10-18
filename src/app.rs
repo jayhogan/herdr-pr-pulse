@@ -202,6 +202,20 @@ impl App {
         self.cursor = 0;
     }
 
+    /// Moves the cursor by `delta` selectable rows, clamped to the first and last.
+    pub fn move_cursor(&mut self, delta: isize) {
+        let now = self.data.as_ref().map(|d| d.fetched_at).unwrap_or_default();
+        let last = match self.screen(now).body {
+            Body::Groups(gs) => gs
+                .iter()
+                .map(|g| 1 + if g.folded { 0 } else { g.rows.len() })
+                .sum::<usize>()
+                .saturating_sub(1),
+            _ => 0,
+        };
+        self.cursor = self.cursor.min(last).saturating_add_signed(delta).min(last);
+    }
+
     /// Replaced by the real herdr mapping in Task 13.
     #[cfg(test)]
     pub fn set_agents_for_test(&mut self, agents: BTreeMap<String, AgentState>) {
