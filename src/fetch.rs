@@ -6,7 +6,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 use std::time::{Duration as StdDuration, Instant};
 
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, Utc};
 
 use crate::github::{self, Gh, GhError, Target};
 use crate::model::Pr;
@@ -20,7 +20,6 @@ const FRESH: i64 = 60;
 const DETAIL_CHUNK: usize = 25;
 const POLL_EVERY: StdDuration = StdDuration::from_secs(60);
 const RECHECK_AFTER: StdDuration = StdDuration::from_secs(10);
-const WAIT_FOR_OTHER: StdDuration = StdDuration::from_secs(2);
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum FetchRequest {
@@ -83,8 +82,12 @@ fn merge_prs(prs: &mut Vec<Pr>, new: Vec<Pr>) {
 /// Decides when the main loop sends requests: `Scheduled` at startup and every 60 s, and
 /// one `Recheck` 10 s after a fetch that left merge states unknown.
 pub struct Poller {
-    next_scheduled: Instant,
+    /// `None` while a scheduled answer is awaited: the next one is timed from its `Done`, so
+    /// the cache it carries is at least 60 s old by then.
+    next_scheduled: Option<Instant>,
     recheck: Option<(Instant, Vec<String>)>,
+    /// The fetch the last recheck was scheduled for (once per fetch, across copies).
+    rechecked: Option<Option<DateTime<Utc>>>,
     /// Requests sent and not yet answered by a `Done`; true for a `Recheck`.
     in_flight: VecDeque<bool>,
 }
@@ -92,8 +95,9 @@ pub struct Poller {
 impl Poller {
     pub fn new(now: Instant) -> Poller {
         Poller {
-            next_scheduled: now,
+            next_scheduled: Some(now),
             recheck: None,
+            rechecked: None,
             in_flight: VecDeque::new(),
         }
     }
@@ -101,8 +105,8 @@ impl Poller {
     /// Requests due at `now`; each returned request must be sent.
     pub fn due(&mut self, now: Instant) -> Vec<FetchRequest> {
         let mut out = Vec::new();
-        if now >= self.next_scheduled {
-            self.next_scheduled = now + POLL_EVERY;
+        if self.next_scheduled.is_some_and(|at| now >= at) {
+            self.next_scheduled = None;
             self.in_flight.push_back(false);
             out.push(FetchRequest::Scheduled);
         }
@@ -120,12 +124,24 @@ impl Poller {
         FetchRequest::Forced
     }
 
-    /// Called for every `Done`, with the app's unknown merge ids after applying it.
-    pub fn on_done(&mut self, now: Instant, unknown: Vec<String>) {
+    /// Called for every `Done`, with its cache's `fetched_at` and the app's unknown merge
+    /// ids after applying it.
+    pub fn on_done(
+        &mut self,
+        now: Instant,
+        fetched_at: Option<DateTime<Utc>>,
+        unknown: Vec<String>,
+    ) {
         if self.in_flight.pop_front().unwrap_or(false) {
             return; // a recheck's answer never schedules another
         }
-        self.recheck = (!unknown.is_empty()).then(|| (now + RECHECK_AFTER, unknown));
+        self.next_scheduled = Some(now + POLL_EVERY);
+        if unknown.is_empty() {
+            self.recheck = None;
+        } else if self.rechecked != Some(fetched_at) {
+            self.rechecked = Some(fetched_at);
+            self.recheck = Some((now + RECHECK_AFTER, unknown));
+        }
     }
 }
 
@@ -170,25 +186,38 @@ impl Worker {
 
     fn handle(&self, req: &FetchRequest) -> Result<(), Gone> {
         // The lock is held until this function returns; a manual request waits for it.
-        let mut lock = self.state.try_fetch_lock().ok().flatten();
+        // A lock that cannot be tried (I/O error) must not stop fetching: treat it as ours.
+        let (mut lock, have_lock) = match self.state.try_fetch_lock() {
+            Ok(Some(file)) => (Some(file), true),
+            Ok(None) => (None, false),
+            Err(_) => (None, true),
+        };
         let cache = self.load();
         let age = cache.fetched_at.map(|t| Utc::now() - t);
-        match decide(req, age, lock.is_some()) {
+        match decide(req, age, have_lock) {
             Plan::UseCache => self.send(FetchEvent::Done(cache)),
             Plan::WaitForOther => {
-                thread::sleep(WAIT_FOR_OTHER);
+                // The other copy releases the lock once its fetch is written; no gh calls here.
+                drop(self.state.fetch_lock());
                 self.send(FetchEvent::Done(self.load()))
             }
             Plan::Fetch => {
                 self.send(FetchEvent::Started)?;
                 if lock.is_none() {
+                    // If locking fails, fetch without the lock rather than not at all.
                     lock = self.state.fetch_lock().ok();
                 }
-                let result = match req {
-                    FetchRequest::Recheck(ids) => self.recheck(ids),
-                    _ => self.fetch_all()?,
+                let cache = match req {
+                    // A failed recheck is dropped: the cache (and its error state) stays as is.
+                    FetchRequest::Recheck(ids) => match self.recheck(ids) {
+                        Ok(prs) => self.save(Ok(Change::Merge(prs))),
+                        Err(_) => self.load(),
+                    },
+                    _ => {
+                        let result = self.fetch_all()?;
+                        self.save(result)
+                    }
                 };
-                let cache = self.save(result);
                 drop(lock);
                 self.send(FetchEvent::Done(cache))
             }
@@ -249,7 +278,7 @@ impl Worker {
         })))
     }
 
-    fn recheck(&self, ids: &[String]) -> Result<Change, GhError> {
+    fn recheck(&self, ids: &[String]) -> Result<Vec<Pr>, GhError> {
         let cache = self.load();
         let targets: Vec<Target> = ids
             .iter()
@@ -267,7 +296,7 @@ impl Worker {
                 }
             })
             .collect();
-        detail_chunked(self.gh.as_ref(), &targets).map(Change::Merge)
+        detail_chunked(self.gh.as_ref(), &targets)
     }
 
     /// Writes the outcome into `cache.json` (under its lock, against the latest copy) and
@@ -276,11 +305,8 @@ impl Worker {
         let now = Utc::now();
         let apply = |c: &mut Cache| match &result {
             Ok(Change::Full(new)) => *c = new.clone(),
-            Ok(Change::Merge(prs)) => {
-                merge_prs(&mut c.prs, prs.clone());
-                c.error = None;
-                c.error_at = None;
-            }
+            // A recheck only refreshes its PRs; the error state belongs to the full fetch.
+            Ok(Change::Merge(prs)) => merge_prs(&mut c.prs, prs.clone()),
             Err(e) => {
                 c.error = Some(e.clone());
                 c.error_at = Some(now);
@@ -458,30 +484,134 @@ mod tests {
     }
 
     #[test]
-    fn poller_schedules_and_rechecks_once() {
+    fn poller_schedules_after_done_and_rechecks_once_per_fetch() {
+        use FetchRequest::*;
+        use std::time::Duration as D;
+        let s = |n| D::from_secs(n);
+        let f1: chrono::DateTime<Utc> = "2026-10-17T14:32:08Z".parse().unwrap();
+        let (f2, f3) = (f1 + Duration::seconds(65), f1 + Duration::seconds(70));
+        let a = || vec!["A".to_string()];
+        let t0 = Instant::now();
+        let mut p = Poller::new(t0);
+        assert_eq!(p.due(t0), vec![Scheduled]);
+        assert!(p.due(t0 + s(1)).is_empty());
+        p.on_done(t0 + s(2), Some(f1), a());
+        assert!(p.due(t0 + s(11)).is_empty());
+        assert_eq!(p.due(t0 + s(12)), vec![Recheck(a())]);
+        // The recheck's own Done does not schedule another, nor move the 60 s timer.
+        p.on_done(t0 + s(13), Some(f1), a());
+        assert!(p.due(t0 + s(61)).is_empty());
+        assert_eq!(p.due(t0 + s(62)), vec![Scheduled]);
+        // An answer carrying the same fetch (UseCache / WaitForOther) does not recheck again.
+        p.on_done(t0 + s(63), Some(f1), a());
+        assert!(p.due(t0 + s(122)).is_empty());
+        assert_eq!(p.due(t0 + s(123)), vec![Scheduled]);
+        // A new fetch with unknown ids rechecks once more...
+        p.on_done(t0 + s(125), Some(f2), a());
+        // ...unless a later fetch no longer has any.
+        assert_eq!(p.forced(), Forced);
+        p.on_done(t0 + s(128), Some(f3), vec![]);
+        assert!(p.due(t0 + s(140)).is_empty());
+        assert_eq!(p.due(t0 + s(188)), vec![Scheduled]);
+    }
+
+    #[test]
+    fn next_scheduled_sees_cache_at_least_60s_old() {
         use std::time::Duration as D;
         let t0 = Instant::now();
         let mut p = Poller::new(t0);
-        assert_eq!(p.due(t0), vec![FetchRequest::Scheduled]);
-        assert!(p.due(t0 + D::from_secs(59)).is_empty());
-        p.on_done(t0 + D::from_secs(2), vec!["A".into()]);
-        assert!(p.due(t0 + D::from_secs(11)).is_empty());
+        p.due(t0);
+        // fetched_at is stamped when the fetch starts, before its Done arrives.
+        let done_wall = Utc::now();
+        let fetched_at = done_wall - Duration::seconds(3);
+        let done = t0 + D::from_secs(5);
+        p.on_done(done, Some(fetched_at), vec![]);
+        assert!(p.due(done + D::from_millis(59_999)).is_empty());
         assert_eq!(
-            p.due(t0 + D::from_secs(12)),
-            vec![FetchRequest::Recheck(vec!["A".into()])]
+            p.due(done + D::from_secs(60)),
+            vec![FetchRequest::Scheduled]
         );
-        // The recheck's own Done does not schedule another, even if A is still unknown.
-        p.on_done(t0 + D::from_secs(13), vec!["A".into()]);
-        assert!(p.due(t0 + D::from_secs(40)).is_empty());
-        assert_eq!(p.due(t0 + D::from_secs(60)), vec![FetchRequest::Scheduled]);
-        assert!(p.due(t0 + D::from_secs(61)).is_empty());
-        assert_eq!(p.forced(), FetchRequest::Forced);
-        // Done for the Scheduled at 60 s: rechecks again (once per fetch).
-        p.on_done(t0 + D::from_secs(62), vec!["A".into()]);
-        // Done for the forced fetch: nothing unknown any more, so the recheck is dropped.
-        p.on_done(t0 + D::from_secs(63), vec![]);
-        assert!(p.due(t0 + D::from_secs(80)).is_empty());
-        assert_eq!(p.due(t0 + D::from_secs(120)), vec![FetchRequest::Scheduled]);
+        let age = (done_wall + Duration::seconds(60)) - fetched_at;
+        assert!(age >= Duration::seconds(60));
+        assert_eq!(
+            decide(&FetchRequest::Scheduled, Some(age), true),
+            Plan::Fetch
+        );
+        assert_eq!(
+            decide(&FetchRequest::Scheduled, Some(Duration::seconds(60)), true),
+            Plan::Fetch
+        );
+    }
+
+    #[test]
+    fn wait_for_other_waits_for_its_fetch() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().to_path_buf();
+        let other = StateDir::new(path.clone());
+        let lock = other.try_fetch_lock().unwrap().expect("free lock");
+        let (held_tx, held_rx) = mpsc::channel::<()>();
+        let holder = thread::spawn(move || {
+            held_rx.recv().unwrap();
+            thread::sleep(std::time::Duration::from_millis(200));
+            other
+                .update(CACHE, |c: &mut Cache| {
+                    c.viewer = "other-copy".into();
+                    c.fetched_at = Some(Utc::now());
+                    true
+                })
+                .unwrap();
+            drop(lock);
+        });
+        // No canned responses: any gh call would put an error into the cache.
+        let (tx, rx) = spawn(Box::new(FakeGh::new()), StateDir::new(path));
+        let start = Instant::now();
+        tx.send(FetchRequest::Scheduled).unwrap();
+        held_tx.send(()).unwrap();
+        let evs = until_done(&rx);
+        holder.join().unwrap();
+        // Answered when the other copy lets go (~200 ms), not after a fixed sleep.
+        assert!(start.elapsed() < std::time::Duration::from_millis(1500));
+        assert_eq!(evs.len(), 1, "no Started: {evs:?}");
+        let FetchEvent::Done(cache) = &evs[0] else {
+            unreachable!()
+        };
+        assert_eq!(cache.viewer, "other-copy");
+        assert_eq!(cache.error, None);
+    }
+
+    #[test]
+    fn recheck_leaves_error_alone_and_drops_failures() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = StateDir::new(tmp.path().to_path_buf());
+        let prs = crate::model::parse_detail(DETAIL).unwrap();
+        let before: Cache = state
+            .update(CACHE, |c: &mut Cache| {
+                c.prs = prs.clone();
+                c.error = Some(GhError::LoginExpired);
+                c.error_at = Some(Utc::now());
+                true
+            })
+            .unwrap();
+        let ok = FakeGh::new().with("detail", Ok(DETAIL.into()));
+        let (tx, rx) = spawn(Box::new(ok), StateDir::new(tmp.path().to_path_buf()));
+        tx.send(FetchRequest::Recheck(vec![prs[0].id.clone()]))
+            .unwrap();
+        let FetchEvent::Done(after_ok) = until_done(&rx).pop().unwrap() else {
+            unreachable!()
+        };
+        assert_eq!(after_ok.error, before.error);
+        assert_eq!(after_ok.error_at, before.error_at);
+
+        let failing = FakeGh::new().with("detail", Err(GhError::Other("boom".into())));
+        let (tx, rx) = spawn(Box::new(failing), StateDir::new(tmp.path().to_path_buf()));
+        tx.send(FetchRequest::Recheck(vec![prs[0].id.clone()]))
+            .unwrap();
+        let FetchEvent::Done(after_fail) = until_done(&rx).pop().unwrap() else {
+            unreachable!()
+        };
+        assert_eq!(after_fail, after_ok);
+        let on_disk: Cache = state.load(CACHE).unwrap();
+        assert_eq!(on_disk, after_ok);
     }
 
     #[test]

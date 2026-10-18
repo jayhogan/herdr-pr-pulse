@@ -213,6 +213,7 @@ impl App {
             FetchEvent::Progress(repos) => self.progress = LoadProgress { repos },
             FetchEvent::Done(cache) => {
                 self.fetching = false;
+                self.progress = LoadProgress::default();
                 if let Some(e) = &cache.error {
                     // Keep the rows we have; with none yet, show the last good fetch if any.
                     self.stale = true;
@@ -226,6 +227,9 @@ impl App {
                 } else {
                     self.stale = false;
                     self.banner = None;
+                    if cache.fetched_at.is_none() {
+                        return; // nothing fetched yet (e.g. an empty cache): still loading
+                    }
                 }
                 self.set_prs(
                     cache.prs,
@@ -511,6 +515,21 @@ mod tests {
         let s = a.screen(now());
         assert!(!s.header.stale);
         assert_eq!(s.banner, None);
+    }
+
+    #[test]
+    fn empty_default_cache_keeps_loading() {
+        let mut a = App::new(ViewKind::Mine, FixedOffset::east_opt(0).unwrap());
+        a.apply_fetch(FetchEvent::Started, now());
+        a.apply_fetch(
+            FetchEvent::Progress(vec![("heard/docket".into(), RepoStatus::Loading)]),
+            now(),
+        );
+        a.apply_fetch(FetchEvent::Done(crate::store::Cache::default()), now());
+        let s = a.screen(now());
+        assert_eq!(s.body, Body::Loading(LoadProgress::default()));
+        assert!(!s.header.fetching);
+        assert!(a.unknown_merge_ids().is_empty());
     }
 
     #[test]

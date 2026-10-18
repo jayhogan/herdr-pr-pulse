@@ -140,10 +140,14 @@ impl Live {
             let _ = self.requests.send(req); // a dead worker leaves the last data on screen
         }
         while let Ok(ev) = self.events.try_recv() {
-            let done = matches!(ev, FetchEvent::Done(_));
+            let done = match &ev {
+                FetchEvent::Done(cache) => Some(cache.fetched_at),
+                _ => None,
+            };
             app.apply_fetch(ev, Utc::now());
-            if done {
-                self.poller.on_done(Instant::now(), app.unknown_merge_ids());
+            if let Some(fetched_at) = done {
+                self.poller
+                    .on_done(Instant::now(), fetched_at, app.unknown_merge_ids());
             }
         }
     }
