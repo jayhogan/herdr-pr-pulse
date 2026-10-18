@@ -1,8 +1,10 @@
 //! GitHub access through the `gh` CLI (GraphQL only, read-only).
 
 use std::collections::HashSet;
-use std::io::{ErrorKind, Write};
+use std::io::{ErrorKind, Read, Write};
 use std::process::{Command, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -75,29 +77,64 @@ pub trait Gh: Send {
 /// Runs `gh api graphql --input -` with `{"query","variables"}` on stdin.
 pub struct GhCli;
 
+/// A gh call that has not finished by then is killed, so a stalled gh cannot hold the fetch
+/// lock (and every copy's refresh) forever.
+const GH_TIMEOUT: Duration = Duration::from_secs(30);
+
 impl Gh for GhCli {
     fn graphql(&self, query: &str, variables: &Value) -> Result<String, GhError> {
-        let spawn_err = |e: std::io::Error| classify("", Some(e.kind()));
-        let mut child = Command::new("gh")
-            .args(["api", "graphql", "--input", "-"])
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(spawn_err)?;
         let body = json!({"query": query, "variables": variables}).to_string();
-        // Write errors (e.g. BrokenPipe when gh exits early) are judged after gh's exit status.
-        let mut stdin = child.stdin.take().expect("stdin is piped");
-        let written = stdin.write_all(body.as_bytes());
-        drop(stdin);
-        let out = child.wait_with_output().map_err(spawn_err)?;
-        finish(
-            written,
-            out.status.success(),
-            &String::from_utf8_lossy(&out.stdout),
-            &String::from_utf8_lossy(&out.stderr),
-        )
+        run("gh", &["api", "graphql", "--input", "-"], body, GH_TIMEOUT)
     }
+}
+
+/// Runs `program` with `input` on stdin and returns its stdout through `finish`. The pipes
+/// are fed and drained on helper threads so a full pipe cannot deadlock the wait, and a
+/// program still running after `timeout` is killed.
+fn run(program: &str, args: &[&str], input: String, timeout: Duration) -> Result<String, GhError> {
+    let spawn_err = |e: std::io::Error| classify("", Some(e.kind()));
+    let mut child = Command::new(program)
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(spawn_err)?;
+    let mut stdin = child.stdin.take().expect("stdin is piped");
+    // Write errors (e.g. BrokenPipe when gh exits early) are judged after gh's exit status.
+    let writer = thread::spawn(move || stdin.write_all(input.as_bytes()));
+    let stdout = drain(child.stdout.take().expect("stdout is piped"));
+    let stderr = drain(child.stderr.take().expect("stderr is piped"));
+    let deadline = Instant::now() + timeout;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if Instant::now() >= deadline => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(GhError::Other(format!(
+                    "gh timed out after {}s",
+                    timeout.as_secs()
+                )));
+            }
+            Ok(None) => thread::sleep(Duration::from_millis(20)),
+            Err(e) => return Err(spawn_err(e)),
+        }
+    };
+    let written = writer.join().unwrap_or(Ok(()));
+    let text = |h: thread::JoinHandle<Vec<u8>>| {
+        String::from_utf8_lossy(&h.join().unwrap_or_default()).into_owned()
+    };
+    finish(written, status.success(), &text(stdout), &text(stderr))
+}
+
+/// Reads `pipe` to its end on a helper thread.
+fn drain(mut pipe: impl Read + Send + 'static) -> thread::JoinHandle<Vec<u8>> {
+    thread::spawn(move || {
+        let mut buf = Vec::new();
+        let _ = pipe.read_to_end(&mut buf);
+        buf
+    })
 }
 
 /// Combines the stdin write result with gh's exit status. A non-zero exit is classified from
@@ -454,6 +491,34 @@ mod tests {
         let target_id = all.iter().find(|p| p.number == 1295).unwrap().id.clone();
         let rest: Vec<Pr> = all.into_iter().filter(|p| p.number != 1295).collect();
         assert_eq!(missing_stack_entries(&rest), vec![target_id]);
+    }
+
+    #[test]
+    fn run_passes_stdin_and_classifies_failures() {
+        let secs = Duration::from_secs(5);
+        let echo = run("sh", &["-c", "cat; echo noise >&2"], "hello".into(), secs);
+        assert_eq!(echo, Ok("hello".into()));
+        let expired = "cat >/dev/null; echo 'HTTP 401: Bad credentials' >&2; exit 1";
+        assert_eq!(
+            run("sh", &["-c", expired], "x".into(), secs),
+            Err(GhError::LoginExpired)
+        );
+        assert_eq!(
+            run("/nonexistent/gh-pr-pulse", &[], String::new(), secs),
+            Err(GhError::NotInstalled)
+        );
+    }
+
+    #[test]
+    fn run_kills_a_stalled_command() {
+        let start = std::time::Instant::now();
+        let out = run("sleep", &["5"], String::new(), Duration::from_secs(1));
+        assert_eq!(out, Err(GhError::Other("gh timed out after 1s".into())));
+        assert!(
+            start.elapsed() < Duration::from_secs(3),
+            "{:?}",
+            start.elapsed()
+        );
     }
 
     /// Live read-only smoke test: `cargo test live_ -- --ignored --nocapture`.
