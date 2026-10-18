@@ -37,16 +37,12 @@ pub struct Snapshot {
     pub layouts: Vec<Layout>,
     #[serde(default)]
     pub focused_workspace_id: Option<String>,
-    #[serde(default)]
-    pub focused_pane_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct Workspace {
     #[serde(default)]
     pub workspace_id: String,
-    #[serde(default)]
-    pub label: String,
     #[serde(default)]
     pub active_tab_id: Option<String>,
     #[serde(default)]
@@ -57,12 +53,6 @@ pub struct Workspace {
 pub struct Worktree {
     #[serde(default)]
     pub checkout_path: String,
-    #[serde(default)]
-    pub repo_root: String,
-    #[serde(default)]
-    pub repo_name: String,
-    #[serde(default)]
-    pub is_linked_worktree: bool,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -78,8 +68,6 @@ pub struct Pane {
     #[serde(default)]
     pub foreground_cwd: String,
     #[serde(default)]
-    pub agent_status: String,
-    #[serde(default)]
     pub focused: bool,
 }
 
@@ -88,27 +76,7 @@ pub struct Agent {
     #[serde(default)]
     pub pane_id: String,
     #[serde(default)]
-    pub workspace_id: String,
-    #[serde(default)]
-    pub agent: String,
-    #[serde(default)]
     pub agent_status: String,
-    #[serde(default)]
-    pub cwd: String,
-    #[serde(default)]
-    pub foreground_cwd: String,
-    #[serde(default)]
-    pub terminal_title_stripped: Option<String>,
-    #[serde(default)]
-    pub agent_session: Option<AgentSession>,
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
-pub struct AgentSession {
-    #[serde(default)]
-    pub kind: String,
-    #[serde(default)]
-    pub value: String,
 }
 
 /// One tab's pane layout; only the zoom state matters here.
@@ -181,13 +149,6 @@ pub fn focus_pane(pane_id: &str) -> Result<(), String> {
 }
 
 impl Snapshot {
-    pub fn workspace_of(&self, pane_id: &str) -> Option<&str> {
-        self.panes
-            .iter()
-            .find(|p| p.pane_id == pane_id)
-            .map(|p| p.workspace_id.as_str())
-    }
-
     /// True when the pane is on screen: its workspace is focused, its tab is that workspace's
     /// active tab, and no other pane is zoomed over it. Missing fields mean not visible.
     pub fn is_visible(&self, pane_id: &str) -> bool {
@@ -282,15 +243,13 @@ mod tests {
     }
 
     #[test]
-    fn checkout_key_and_workspace_of() {
+    fn checkout_key() {
         let s = fixture();
         assert_eq!(
             s.checkout_key("w1").as_deref(),
             Some("/work/heard-ts-audit")
         );
         assert_eq!(s.checkout_key("w4"), None);
-        assert_eq!(s.workspace_of("w3:p1"), Some("w3"));
-        assert_eq!(s.workspace_of("nope"), None);
     }
 
     #[test]

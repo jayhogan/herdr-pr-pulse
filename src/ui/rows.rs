@@ -103,12 +103,6 @@ pub fn render(frame: &mut Frame, screen: &Screen, scroll: &mut usize) -> usize {
     help_max
 }
 
-/// The scrollable body lines and the index of the cursor's (first) line.
-pub fn lines(screen: &Screen, width: u16) -> (Vec<Line<'static>>, usize) {
-    let (out, cursor, _) = body_lines(screen, width);
-    (out, cursor)
-}
-
 /// Body lines with the cursor's first and last line (they differ on two-line PR rows).
 fn body_lines(screen: &Screen, width: u16) -> (Vec<Line<'static>>, usize, usize) {
     let d = density(width);

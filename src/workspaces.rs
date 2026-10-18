@@ -71,6 +71,7 @@ impl Memory {
     }
 
     /// `(repo, pr id)` of every remembered PR, once each.
+    #[cfg(test)]
     pub fn all_ids(&self) -> Vec<(String, String)> {
         self.all()
             .into_iter()
