@@ -645,6 +645,50 @@ mod tests {
     }
 
     #[test]
+    fn drawer_wraps_the_stack_note_instead_of_clipping() {
+        for width in [120, 80, 44] {
+            let mut a = stack_blocked_app();
+            a.move_cursor(1);
+            a.handle_key(key(' '));
+            let t = text(&draw(&a, width, 50));
+            let flat = |s: &str| {
+                s.lines()
+                    .flat_map(|l| l.split(['│', '┌', '└']).last().map(str::to_string))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            };
+            let all = flat(&t);
+            for want in [
+                "ready to merge as a stack (1 of 4)",
+                "GitHub marks this PR blocked on its own; rules are checked when the stack merges",
+            ] {
+                assert!(all.contains(want), "{width}: {want}\n{t}");
+            }
+            if width == 44 {
+                let buf = draw(&a, width, 50);
+                let lines = text_lines(&buf);
+                let region = lines[line_of(&buf, "#1284")..line_of(&buf, "#1287")].join("\n");
+                insta::assert_snapshot!("drawer_44_stack_note", region);
+            }
+        }
+    }
+
+    #[test]
+    fn unknown_bottom_keeps_the_plain_header() {
+        let a = app_with(|prs| {
+            for p in prs.iter_mut().filter(|p| p.number == 1284) {
+                p.merge = model::MergeState::Unknown;
+            }
+        });
+        let t = text(&draw(&a, 120, 30));
+        assert!(!t.contains("◆ merge stack"), "{t}");
+        assert!(t.contains("mergeable through layer"), "{t}");
+    }
+
+    #[test]
     fn drawer_splits_people_and_bots() {
         for width in [120, 80, 44] {
             let t = text(&draw(&drawer_app(), width, 40));

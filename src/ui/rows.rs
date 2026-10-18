@@ -11,7 +11,7 @@ use ratatui::widgets::Paragraph;
 
 use crate::app::{AgentDot, Body, GroupView, RowView, Screen, ViewKind};
 use crate::attention::{Attention, Reason, reasons};
-use crate::model::PrState;
+use crate::model::{MergeState, PrState};
 use crate::stacks::GroupKind;
 use crate::ui::cells::{
     cell, ci, dw, first_class, merge, pick, plural, reason_style, reason_words, review, threads,
@@ -229,7 +229,12 @@ fn merge_story(g: &GroupView, d: Density) -> Vec<Span<'static>> {
         spans.push(Span::styled(t, reason_style(first)));
         return spans;
     }
-    let native_ready = g.kind == GroupKind::Native && m >= 1;
+    let bottom_unknown = g
+        .rows
+        .iter()
+        .find(|r| r.layer == 1)
+        .is_some_and(|r| r.pr.merge == MergeState::Unknown);
+    let native_ready = g.kind == GroupKind::Native && m >= 1 && !bottom_unknown;
     match d {
         Wide | Medium if native_ready => {
             spans.push(Span::styled(

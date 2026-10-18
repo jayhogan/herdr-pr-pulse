@@ -50,6 +50,8 @@ struct Item {
     right: Option<Span<'static>>,
     /// Side by side: shown under the columns across their full width, not clipped to one.
     full_width: bool,
+    /// Wrapped onto several lines rather than clipped when it is wider than its room.
+    wrap: bool,
 }
 
 impl Item {
@@ -59,6 +61,7 @@ impl Item {
             gap: "",
             right: None,
             full_width: false,
+            wrap: false,
         }
     }
 
@@ -210,42 +213,40 @@ fn merge_section(row: &RowView, mode: Mode) -> Section {
         Some(n) => format!("behind {base} by {n}"),
         None => format!("behind {base}"),
     };
-    let (glyph, text, glyph_style, text_style) = match (pr.merge, row.waiting_on) {
-        (MergeState::Blocked, None) if row.stack_ready.is_some() => {
-            let (k, n) = row.stack_ready.unwrap_or_default();
-            (
-                "✓",
-                format!("ready to merge as a stack ({k} of {n})"),
-                theme::green(),
-                theme::green(),
-            )
-        }
-        (MergeState::Behind, _) => ("↓", behind, theme::yellow(), theme::yellow()),
-        (MergeState::Dirty, _) => (
+    let (glyph, text, glyph_style, text_style) = match (pr.merge, row.waiting_on, row.stack_ready) {
+        (MergeState::Blocked, None, Some((k, n))) => (
+            "✓",
+            format!("ready to merge as a stack ({k} of {n})"),
+            theme::green(),
+            theme::green(),
+        ),
+        (MergeState::Behind, _, _) => ("↓", behind, theme::yellow(), theme::yellow()),
+        (MergeState::Dirty, _, _) => (
             "⚠",
             format!("conflicts with {base}"),
             theme::red(),
             theme::red(),
         ),
-        (_, Some(below)) => up_to_date(format!("#{below}")),
-        (MergeState::Unknown, None) => (
+        (_, Some(below), _) => up_to_date(format!("#{below}")),
+        (MergeState::Unknown, None, _) => (
             "?",
             "GitHub is computing".into(),
             theme::dim(),
             theme::dim(),
         ),
-        (MergeState::Blocked, None) => (
+        (MergeState::Blocked, None, _) => (
             "⊘",
             "blocked by branch rules".into(),
             theme::red(),
             theme::red(),
         ),
-        (_, None) => up_to_date(base.clone()),
+        (_, None, _) => up_to_date(base.clone()),
     };
-    let main = Item::new(vec![
+    let mut main = Item::new(vec![
         span(format!("{glyph} "), glyph_style),
         span(text, text_style),
     ]);
+    main.wrap = row.stack_ready.is_some();
     let mut items = vec![main];
     if row.stack_ready.is_some() {
         let mut note = Item::new(vec![span(
@@ -253,6 +254,7 @@ fn merge_section(row: &RowView, mode: Mode) -> Section {
             theme::dim(),
         )]);
         note.full_width = true;
+        note.wrap = true;
         items.push(note);
     }
     if pr.merge != MergeState::Dirty {
@@ -280,6 +282,30 @@ fn changed_section(row: &RowView) -> Option<Section> {
 
 // ---------------------------------------------------------------- layout
 
+/// `spans` broken at spaces into lines of at most `width` columns, each word keeping its style.
+fn wrap(spans: Vec<Span<'static>>, width: usize) -> Vec<Vec<Span<'static>>> {
+    let mut lines: Vec<Vec<Span<'static>>> = vec![Vec::new()];
+    let mut used = 0;
+    for s in spans {
+        for word in s.content.split_inclusive(' ') {
+            let w = dw(word.trim_end());
+            if used > 0 && used + w > width {
+                lines.push(Vec::new());
+                used = 0;
+            }
+            used += dw(word);
+            let line = lines.last_mut().expect("starts non-empty");
+            line.push(Span::styled(word.to_string(), s.style));
+        }
+    }
+    for line in &mut lines {
+        if let Some(last) = line.last_mut() {
+            *last = Span::styled(last.content.trim_end().to_string(), last.style);
+        }
+    }
+    lines
+}
+
 /// `spans` cut to `width` columns (ending in `…` if cut) and padded to exactly `width`.
 fn clip(spans: Vec<Span<'static>>, width: usize) -> Vec<Span<'static>> {
     let mut out = Vec::new();
@@ -303,6 +329,11 @@ fn clip(spans: Vec<Span<'static>>, width: usize) -> Vec<Span<'static>> {
 
 fn dim(text: &str) -> Span<'static> {
     span(text, theme::dim())
+}
+
+fn inline_width(item: &Item) -> usize {
+    let right = item.right.as_ref().map_or(0, |r| dw(item.gap) + r.width());
+    item.left.iter().map(Span::width).sum::<usize>() + right
 }
 
 /// One item as a single run of spans, the right part after its gap.
@@ -335,10 +366,10 @@ fn side_by_side(
     };
     let mut sections = sections;
     let mut notes = Vec::new();
-    for s in &mut sections {
+    for (s, w) in sections.iter_mut().zip(cols) {
         let (full, rest): (Vec<Item>, Vec<Item>) = std::mem::take(&mut s.items)
             .into_iter()
-            .partition(|i| i.full_width);
+            .partition(|i| i.full_width || (i.wrap && inline_width(i) > w));
         s.items = rest;
         notes.extend(full);
     }
@@ -375,7 +406,9 @@ fn side_by_side(
     }
     let total = width.saturating_sub(dw(&pre) + 2);
     for note in notes {
-        out.push(line("│ ", vec![clip(inline(note), total)]));
+        for l in wrap(inline(note), total) {
+            out.push(line("│ ", vec![clip(l, total)]));
+        }
     }
     for s in extra {
         out.push(line(
@@ -414,6 +447,14 @@ fn stacked(sections: Vec<Section>, width: usize, closing: bool) -> Vec<Line<'sta
         for item in s.items {
             let lead = format!("{rail}│ ");
             let room = width.saturating_sub(dw(&lead));
+            if item.wrap {
+                for l in wrap(inline(item), room) {
+                    let mut line = vec![dim(&lead)];
+                    line.extend(clip(l, room));
+                    out.push(Line::from(line));
+                }
+                continue;
+            }
             let mut spans = item.left;
             if let Some(right) = item.right {
                 // Right-aligned with one column to spare, as on board 2.
