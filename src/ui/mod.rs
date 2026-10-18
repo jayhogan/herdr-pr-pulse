@@ -101,6 +101,11 @@ mod tests {
     }
 
     #[test]
+    fn mine_100() {
+        insta::assert_snapshot!(text(&draw(&app(), 100, 30)));
+    }
+
+    #[test]
     fn mine_80() {
         insta::assert_snapshot!(text(&draw(&app(), 80, 30)));
     }
@@ -118,7 +123,7 @@ mod tests {
     #[test]
     fn density_breakpoints() {
         use rows::Density::*;
-        let d: Vec<_> = [120, 100, 99, 60, 59, 40, 39, 1]
+        let d: Vec<_> = [200, 120, 119, 80, 79, 40, 39, 1]
             .into_iter()
             .map(rows::density)
             .collect();
@@ -193,5 +198,30 @@ mod tests {
         a.move_cursor(100);
         let buf = draw(&a, 120, 8);
         assert!(text(&buf).contains('▶'), "{}", text(&buf));
+    }
+
+    #[test]
+    fn titles_stay_wide_at_band_edges() {
+        let a = app_with(|prs| {
+            prs.iter_mut().find(|p| p.number == 1284).unwrap().title = "x".repeat(200);
+        });
+        for width in [79, 80, 119, 120] {
+            let buf = draw(&a, width, 30);
+            let line = &text_lines(&buf)[line_of(&buf, "#1284")];
+            // The cell is the fitted text (x… ) plus one column of gap.
+            let cell = line.matches('x').count() + 2;
+            assert!(cell >= 22, "{width} cols: title cell {cell}\n{line}");
+        }
+    }
+
+    #[test]
+    fn two_line_cursor_row_at_bottom_shows_both_lines() {
+        let mut a = app();
+        a.move_cursor(100);
+        let buf = draw(&a, 44, 6);
+        let lines = text_lines(&buf);
+        let y = line_of(&buf, "#1302");
+        assert!(lines[y].contains('▶'), "{}", text(&buf));
+        assert!(lines[y + 1].contains("? computing"), "{}", text(&buf));
     }
 }

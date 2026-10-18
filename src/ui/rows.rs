@@ -31,11 +31,14 @@ pub enum Density {
 
 use Density::*;
 
+/// Row layout by terminal width: >= 120 board 1, 80..120 board 3, 40..80 board 2,
+/// < 40 board 2's 34-column words. Each band starts at its board's width, so the title
+/// column only grows inside a band.
 pub fn density(width: u16) -> Density {
     match width {
-        100.. => Wide,
-        60..=99 => Medium,
-        40..=59 => Narrow,
+        120.. => Wide,
+        80..=119 => Medium,
+        40..=79 => Narrow,
         _ => Tiny,
     }
 }
@@ -55,8 +58,7 @@ pub fn render(frame: &mut Frame, screen: &Screen, scroll: &mut usize) {
     let width = area.width as usize;
     let top = top_lines(screen, d, width);
     let bottom = footer(screen, d, width);
-    let (body, cursor) = lines(screen, area.width);
-    let cursor_end = cursor + if matches!(d, Narrow | Tiny) { 1 } else { 0 };
+    let (body, cursor, cursor_end) = body_lines(screen, area.width);
 
     let top_h = (top.len() as u16).min(area.height);
     let bottom_h = (bottom.len() as u16).min(area.height - top_h);
@@ -83,18 +85,24 @@ pub fn render(frame: &mut Frame, screen: &Screen, scroll: &mut usize) {
 
 /// The scrollable body lines and the index of the cursor's (first) line.
 pub fn lines(screen: &Screen, width: u16) -> (Vec<Line<'static>>, usize) {
+    let (out, cursor, _) = body_lines(screen, width);
+    (out, cursor)
+}
+
+/// Body lines with the cursor's first and last line (they differ on two-line PR rows).
+fn body_lines(screen: &Screen, width: u16) -> (Vec<Line<'static>>, usize, usize) {
     let d = density(width);
     let width = width as usize;
     let mut out = Vec::new();
-    let mut cursor_line = 0;
+    let (mut cursor_line, mut cursor_end) = (0, 0);
     let groups = match &screen.body {
         Body::Loading(_) => {
             out.push(Line::styled(fit("  ⠹ loading…", width), theme::dim()));
-            return (out, 0);
+            return (out, 0, 0);
         }
         Body::Empty(_) => {
             out.push(Line::styled(fit("  no open PRs", width), theme::dim()));
-            return (out, 0);
+            return (out, 0, 0);
         }
         Body::Groups(gs) => gs,
     };
@@ -104,7 +112,7 @@ pub fn lines(screen: &Screen, width: u16) -> (Vec<Line<'static>>, usize) {
             out.push(Line::raw(""));
         }
         if selectable == screen.cursor {
-            cursor_line = out.len();
+            (cursor_line, cursor_end) = (out.len(), out.len());
         }
         out.push(group_header(g, d, selectable == screen.cursor));
         selectable += 1;
@@ -121,14 +129,15 @@ pub fn lines(screen: &Screen, width: u16) -> (Vec<Line<'static>>, usize) {
         }
         for r in &g.rows {
             let cur = selectable == screen.cursor;
+            let row = row_lines(g, r, d, width, cur);
             if cur {
-                cursor_line = out.len();
+                (cursor_line, cursor_end) = (out.len(), out.len() + row.len() - 1);
             }
-            out.extend(row_lines(g, r, d, width, cur));
+            out.extend(row);
             selectable += 1;
         }
     }
-    (out, cursor_line)
+    (out, cursor_line, cursor_end)
 }
 
 /// Column widths for one-line rows: cursor, attention, layer, #, state, CI, threads,
