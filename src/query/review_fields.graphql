@@ -19,6 +19,8 @@ fragment reviewFields on PullRequest {
   baseRefName
   reviewDecision
   latestReviews(first: 20) { nodes { state submittedAt author { login __typename } } }
+  # Approvals and change requests only: a later comment doesn't hide them.
+  latestOpinionatedReviews(first: 20) { nodes { state submittedAt author { login } } }
   reviewRequests(first: 20) {
     nodes {
       asCodeOwner

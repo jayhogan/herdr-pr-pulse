@@ -20,6 +20,17 @@ pub struct ReviewPr {
     /// Team slugs and user logins whose review was requested as code owner.
     pub code_owner_requests: Vec<String>,
     pub head_committed_at: Option<DateTime<Utc>>,
+    /// Each reviewer's latest approval or change request (`latestOpinionatedReviews`): unlike
+    /// the reviewers list, a later comment doesn't replace it.
+    #[serde(default)]
+    pub opinions: Vec<Opinion>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Opinion {
+    pub login: String,
+    pub state: ReviewState,
+    pub at: Option<DateTime<Utc>>,
 }
 
 /// One page of the review search.
@@ -47,16 +58,15 @@ impl ReviewPr {
         match self.pr.approved {
             Some(approved) => approved,
             None => self
-                .pr
-                .reviewers
+                .opinions
                 .iter()
-                .any(|r| r.state == ReviewState::Approved),
+                .any(|o| o.state == ReviewState::Approved),
         }
     }
 
     /// The viewer requested changes and no commit landed after that review.
     pub fn waiting_on_author(&self, viewer: &str) -> bool {
-        self.pr.reviewers.iter().any(|r| {
+        self.opinions.iter().any(|r| {
             r.login == viewer
                 && r.state == ReviewState::ChangesRequested
                 && r.at
@@ -142,6 +152,14 @@ struct RawCommit {
     commit: RawCommitDate,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RawOpinion {
+    state: String,
+    submitted_at: Option<DateTime<Utc>>,
+    author: Option<RawLogin>,
+}
+
 /// The fields the review fragment adds to `prFields`.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -151,6 +169,7 @@ struct RawExtras {
     timeline_items: Option<Nodes<RawCreated>>,
     review_requests: Option<Nodes<RawRequest>>,
     commits: Option<Nodes<RawCommit>>,
+    latest_opinionated_reviews: Option<Nodes<RawOpinion>>,
 }
 
 fn review_pr(v: Value) -> Result<ReviewPr, String> {
@@ -172,6 +191,21 @@ fn review_pr(v: Value) -> Result<ReviewPr, String> {
             .filter_map(|r| r.requested_reviewer.and_then(|w| w.slug.or(w.login)))
             .collect(),
         head_committed_at: items(x.commits).last().map(|c| c.commit.committed_date),
+        opinions: items(x.latest_opinionated_reviews)
+            .into_iter()
+            .filter_map(|r| {
+                let state = match r.state.as_str() {
+                    "APPROVED" => ReviewState::Approved,
+                    "CHANGES_REQUESTED" => ReviewState::ChangesRequested,
+                    _ => return None,
+                };
+                Some(Opinion {
+                    login: r.author?.login,
+                    state,
+                    at: r.submitted_at,
+                })
+            })
+            .collect(),
     })
 }
 

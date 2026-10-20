@@ -25,6 +25,9 @@
       "latestReviews": {
         "nodes": []
       },
+      "latestOpinionatedReviews": {
+        "nodes": []
+      },
       "reviewRequests": {
         "nodes": [
           {
@@ -162,6 +165,9 @@
           }
         ]
       },
+      "latestOpinionatedReviews": {
+        "nodes": []
+      },
       "reviewRequests": {
         "nodes": [
           {
@@ -253,6 +259,9 @@
       "latestReviews": {
         "nodes": []
       },
+      "latestOpinionatedReviews": {
+        "nodes": []
+      },
       "reviewRequests": {
         "nodes": []
       },
@@ -323,6 +332,9 @@
       "baseRefName": "main",
       "reviewDecision": "REVIEW_REQUIRED",
       "latestReviews": {
+        "nodes": []
+      },
+      "latestOpinionatedReviews": {
         "nodes": []
       },
       "reviewRequests": {
@@ -422,6 +434,18 @@
           }
         ]
       },
+      "latestOpinionatedReviews": {
+        "nodes": [
+          {
+            "state": "CHANGES_REQUESTED",
+            "submittedAt": "2026-10-18T10:00:00Z",
+            "author": {
+              "login": "jayhogan",
+              "__typename": "User"
+            }
+          }
+        ]
+      },
       "reviewRequests": {
         "nodes": []
       },
@@ -492,6 +516,18 @@
       "baseRefName": "main",
       "reviewDecision": "REVIEW_REQUIRED",
       "latestReviews": {
+        "nodes": [
+          {
+            "state": "COMMENTED",
+            "submittedAt": "2026-10-20T09:00:00Z",
+            "author": {
+              "login": "jayhogan",
+              "__typename": "User"
+            }
+          }
+        ]
+      },
+      "latestOpinionatedReviews": {
         "nodes": [
           {
             "state": "CHANGES_REQUESTED",
@@ -573,6 +609,9 @@
       "baseRefName": "main",
       "reviewDecision": "REVIEW_REQUIRED",
       "latestReviews": {
+        "nodes": []
+      },
+      "latestOpinionatedReviews": {
         "nodes": []
       },
       "reviewRequests": {
@@ -664,6 +703,18 @@
           }
         ]
       },
+      "latestOpinionatedReviews": {
+        "nodes": [
+          {
+            "state": "APPROVED",
+            "submittedAt": "2026-10-20T08:00:00Z",
+            "author": {
+              "login": "priya-s",
+              "__typename": "User"
+            }
+          }
+        ]
+      },
       "reviewRequests": {
         "nodes": []
       },
@@ -736,6 +787,9 @@
       "latestReviews": {
         "nodes": []
       },
+      "latestOpinionatedReviews": {
+        "nodes": []
+      },
       "reviewRequests": {
         "nodes": []
       },
@@ -806,6 +860,18 @@
       "baseRefName": "main",
       "reviewDecision": null,
       "latestReviews": {
+        "nodes": [
+          {
+            "state": "COMMENTED",
+            "submittedAt": "2026-10-19T12:00:00Z",
+            "author": {
+              "login": "sam-k",
+              "__typename": "User"
+            }
+          }
+        ]
+      },
+      "latestOpinionatedReviews": {
         "nodes": [
           {
             "state": "APPROVED",
@@ -889,6 +955,9 @@
       "latestReviews": {
         "nodes": []
       },
+      "latestOpinionatedReviews": {
+        "nodes": []
+      },
       "reviewRequests": {
         "nodes": []
       },
@@ -959,6 +1028,9 @@
       "baseRefName": "main",
       "reviewDecision": "REVIEW_REQUIRED",
       "latestReviews": {
+        "nodes": []
+      },
+      "latestOpinionatedReviews": {
         "nodes": []
       },
       "reviewRequests": {
@@ -1033,6 +1105,9 @@
       "latestReviews": {
         "nodes": []
       },
+      "latestOpinionatedReviews": {
+        "nodes": []
+      },
       "reviewRequests": {
         "nodes": []
       },
@@ -1100,6 +1175,9 @@
       "baseRefName": "main",
       "reviewDecision": "REVIEW_REQUIRED",
       "latestReviews": {
+        "nodes": []
+      },
+      "latestOpinionatedReviews": {
         "nodes": []
       },
       "reviewRequests": {
