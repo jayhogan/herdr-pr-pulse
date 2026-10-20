@@ -1,0 +1,20 @@
+---
+source: src/ui/review.rs
+expression: "text(&draw(&a, 80, 16))"
+---
+ PR Pulse · Review                                          user · not approved
+
+────────────────────────────────────────────────────────────────────────────────
+  No repos configured.
+
+  Add them to /home/j/.config/herdr-pr-pulse/config.toml:
+
+    [review]
+    repos = ["owner/name", "owner/other"]
+
+  then relaunch this pane.
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+ j/k ␣ info o open r ↻ g group a appr ? help

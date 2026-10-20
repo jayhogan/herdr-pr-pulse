@@ -2,6 +2,7 @@ mod cells;
 mod chrome;
 mod drawer;
 pub mod help;
+pub mod review;
 pub mod rows;
 mod states;
 pub mod theme;

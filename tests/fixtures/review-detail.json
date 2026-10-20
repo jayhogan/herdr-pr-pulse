@@ -1,0 +1,1235 @@
+{
+  "data": {
+    "p0": {
+      "id": "PR_1298",
+      "number": 1298,
+      "title": "billing: retry failed Stripe webhooks",
+      "url": "https://github.com/heard/heard-ts/pull/1298",
+      "state": "OPEN",
+      "isDraft": false,
+      "closedAt": null,
+      "updatedAt": "2026-10-20T12:00:00Z",
+      "createdAt": "2026-10-16T15:00:00Z",
+      "body": "Retries webhooks that failed with a 5xx.",
+      "author": {
+        "login": "maria-chen",
+        "__typename": "User"
+      },
+      "repository": {
+        "nameWithOwner": "heard/heard-ts"
+      },
+      "headRefName": "branch-1298",
+      "headRefOid": "0000000000000000000000000000000000001298",
+      "baseRefName": "main",
+      "reviewDecision": "REVIEW_REQUIRED",
+      "latestReviews": {
+        "nodes": []
+      },
+      "latestOpinionatedReviews": {
+        "nodes": []
+      },
+      "reviewRequests": {
+        "nodes": [
+          {
+            "asCodeOwner": true,
+            "requestedReviewer": {
+              "__typename": "Team",
+              "slug": "billing"
+            }
+          }
+        ]
+      },
+      "timelineItems": {
+        "nodes": []
+      },
+      "commits": {
+        "nodes": [
+          {
+            "commit": {
+              "committedDate": "2026-10-16T15:00:00Z"
+            }
+          }
+        ]
+      },
+      "statusCheckRollup": {
+        "state": "SUCCESS",
+        "contexts": {
+          "nodes": [
+            {
+              "__typename": "CheckRun",
+              "name": "check-0",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "check-1",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "check-2",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "check-3",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "check-4",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "check-5",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "check-6",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "check-7",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "check-8",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            }
+          ]
+        }
+      }
+    },
+    "p1": {
+      "id": "PR_1312",
+      "number": 1312,
+      "title": "billing: proration for mid-cycle plan change when the customer upgrades",
+      "url": "https://github.com/heard/heard-ts/pull/1312",
+      "state": "OPEN",
+      "isDraft": false,
+      "closedAt": null,
+      "updatedAt": "2026-10-20T12:00:00Z",
+      "createdAt": "2026-10-10T09:00:00Z",
+      "body": "<!-- Describe your change -->\r\n<!--\nLink the Linear issue\n-->\nAdds proration when a customer moves plans mid-cycle.\nUses Stripe's preview invoice to compute the credit,\nthen applies it on the next invoice.\n\nBehind the `billing.proration` flag.\nCloses CORE-2210\nA sixth line that is not shown.\nA seventh line that is not shown.\n",
+      "author": {
+        "login": "maria-chen",
+        "__typename": "User"
+      },
+      "repository": {
+        "nameWithOwner": "heard/heard-ts"
+      },
+      "headRefName": "branch-1312",
+      "headRefOid": "0000000000000000000000000000000000001312",
+      "baseRefName": "main",
+      "reviewDecision": "REVIEW_REQUIRED",
+      "latestReviews": {
+        "nodes": [
+          {
+            "state": "COMMENTED",
+            "submittedAt": "2026-10-19T10:00:00Z",
+            "author": {
+              "login": "dan-o",
+              "__typename": "User"
+            }
+          }
+        ]
+      },
+      "latestOpinionatedReviews": {
+        "nodes": []
+      },
+      "reviewRequests": {
+        "nodes": [
+          {
+            "asCodeOwner": true,
+            "requestedReviewer": {
+              "__typename": "Team",
+              "slug": "billing"
+            }
+          },
+          {
+            "asCodeOwner": false,
+            "requestedReviewer": {
+              "__typename": "User",
+              "login": "priya-s"
+            }
+          }
+        ]
+      },
+      "timelineItems": {
+        "nodes": [
+          {
+            "createdAt": "2026-10-18T15:00:00Z"
+          }
+        ]
+      },
+      "commits": {
+        "nodes": [
+          {
+            "commit": {
+              "committedDate": "2026-10-10T09:00:00Z"
+            }
+          }
+        ]
+      },
+      "statusCheckRollup": {
+        "state": "SUCCESS",
+        "contexts": {
+          "nodes": [
+            {
+              "__typename": "CheckRun",
+              "name": "check-0",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "check-1",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "check-2",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            }
+          ]
+        }
+      }
+    },
+    "p2": {
+      "id": "PR_1320",
+      "number": 1320,
+      "title": "billing: invoice PDF footer copy",
+      "url": "https://github.com/heard/heard-ts/pull/1320",
+      "state": "OPEN",
+      "isDraft": false,
+      "closedAt": null,
+      "updatedAt": "2026-10-20T12:00:00Z",
+      "createdAt": "2026-10-20T10:00:00Z",
+      "body": "Copy change.",
+      "author": {
+        "login": "maria-chen",
+        "__typename": "User"
+      },
+      "repository": {
+        "nameWithOwner": "heard/heard-ts"
+      },
+      "headRefName": "branch-1320",
+      "headRefOid": "0000000000000000000000000000000000001320",
+      "baseRefName": "main",
+      "reviewDecision": "REVIEW_REQUIRED",
+      "latestReviews": {
+        "nodes": []
+      },
+      "latestOpinionatedReviews": {
+        "nodes": []
+      },
+      "reviewRequests": {
+        "nodes": []
+      },
+      "timelineItems": {
+        "nodes": []
+      },
+      "commits": {
+        "nodes": [
+          {
+            "commit": {
+              "committedDate": "2026-10-20T10:00:00Z"
+            }
+          }
+        ]
+      },
+      "statusCheckRollup": {
+        "state": "SUCCESS",
+        "contexts": {
+          "nodes": [
+            {
+              "__typename": "CheckRun",
+              "name": "check-0",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "check-1",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "check-2",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            }
+          ]
+        }
+      }
+    },
+    "p3": {
+      "id": "PR_87",
+      "number": 87,
+      "title": "tax: 2026 bracket table",
+      "url": "https://github.com/heard/tax-engine/pull/87",
+      "state": "OPEN",
+      "isDraft": false,
+      "closedAt": null,
+      "updatedAt": "2026-10-20T12:00:00Z",
+      "createdAt": "2026-10-17T15:00:00Z",
+      "body": "New brackets.",
+      "author": {
+        "login": "dan-o",
+        "__typename": "User"
+      },
+      "repository": {
+        "nameWithOwner": "heard/tax-engine"
+      },
+      "headRefName": "branch-87",
+      "headRefOid": "0000000000000000000000000000000000000087",
+      "baseRefName": "main",
+      "reviewDecision": "REVIEW_REQUIRED",
+      "latestReviews": {
+        "nodes": []
+      },
+      "latestOpinionatedReviews": {
+        "nodes": []
+      },
+      "reviewRequests": {
+        "nodes": []
+      },
+      "timelineItems": {
+        "nodes": []
+      },
+      "commits": {
+        "nodes": [
+          {
+            "commit": {
+              "committedDate": "2026-10-17T15:00:00Z"
+            }
+          }
+        ]
+      },
+      "statusCheckRollup": {
+        "state": "SUCCESS",
+        "contexts": {
+          "nodes": [
+            {
+              "__typename": "CheckRun",
+              "name": "check-0",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "check-1",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "check-2",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "check-3",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "test-integration",
+              "status": "COMPLETED",
+              "conclusion": "FAILURE",
+              "completedAt": "2026-10-20T09:00:00Z",
+              "isRequired": true
+            }
+          ]
+        }
+      }
+    },
+    "p4": {
+      "id": "PR_95",
+      "number": 95,
+      "title": "tax: state withholding lookup",
+      "url": "https://github.com/heard/tax-engine/pull/95",
+      "state": "OPEN",
+      "isDraft": false,
+      "closedAt": null,
+      "updatedAt": "2026-10-20T12:00:00Z",
+      "createdAt": "2026-10-17T20:00:00Z",
+      "body": "Lookup.",
+      "author": {
+        "login": "dan-o",
+        "__typename": "User"
+      },
+      "repository": {
+        "nameWithOwner": "heard/tax-engine"
+      },
+      "headRefName": "branch-95",
+      "headRefOid": "0000000000000000000000000000000000000095",
+      "baseRefName": "main",
+      "reviewDecision": "REVIEW_REQUIRED",
+      "latestReviews": {
+        "nodes": [
+          {
+            "state": "CHANGES_REQUESTED",
+            "submittedAt": "2026-10-18T10:00:00Z",
+            "author": {
+              "login": "jayhogan",
+              "__typename": "User"
+            }
+          }
+        ]
+      },
+      "latestOpinionatedReviews": {
+        "nodes": [
+          {
+            "state": "CHANGES_REQUESTED",
+            "submittedAt": "2026-10-18T10:00:00Z",
+            "author": {
+              "login": "jayhogan",
+              "__typename": "User"
+            }
+          }
+        ]
+      },
+      "reviewRequests": {
+        "nodes": []
+      },
+      "timelineItems": {
+        "nodes": []
+      },
+      "commits": {
+        "nodes": [
+          {
+            "commit": {
+              "committedDate": "2026-10-19T09:00:00Z"
+            }
+          }
+        ]
+      },
+      "statusCheckRollup": {
+        "state": "SUCCESS",
+        "contexts": {
+          "nodes": [
+            {
+              "__typename": "CheckRun",
+              "name": "check-0",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "check-1",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "check-2",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            }
+          ]
+        }
+      }
+    },
+    "p5": {
+      "id": "PR_91",
+      "number": 91,
+      "title": "tax: quarterly estimate rounding",
+      "url": "https://github.com/heard/tax-engine/pull/91",
+      "state": "OPEN",
+      "isDraft": false,
+      "closedAt": null,
+      "updatedAt": "2026-10-20T12:00:00Z",
+      "createdAt": "2026-10-19T15:00:00Z",
+      "body": "Rounding.",
+      "author": {
+        "login": "dan-o",
+        "__typename": "User"
+      },
+      "repository": {
+        "nameWithOwner": "heard/tax-engine"
+      },
+      "headRefName": "branch-91",
+      "headRefOid": "0000000000000000000000000000000000000091",
+      "baseRefName": "main",
+      "reviewDecision": "REVIEW_REQUIRED",
+      "latestReviews": {
+        "nodes": [
+          {
+            "state": "COMMENTED",
+            "submittedAt": "2026-10-20T09:00:00Z",
+            "author": {
+              "login": "jayhogan",
+              "__typename": "User"
+            }
+          }
+        ]
+      },
+      "latestOpinionatedReviews": {
+        "nodes": [
+          {
+            "state": "CHANGES_REQUESTED",
+            "submittedAt": "2026-10-19T18:00:00Z",
+            "author": {
+              "login": "jayhogan",
+              "__typename": "User"
+            }
+          }
+        ]
+      },
+      "reviewRequests": {
+        "nodes": []
+      },
+      "timelineItems": {
+        "nodes": []
+      },
+      "commits": {
+        "nodes": [
+          {
+            "commit": {
+              "committedDate": "2026-10-19T16:00:00Z"
+            }
+          }
+        ]
+      },
+      "statusCheckRollup": {
+        "state": "SUCCESS",
+        "contexts": {
+          "nodes": [
+            {
+              "__typename": "CheckRun",
+              "name": "check-0",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "check-1",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "check-2",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            }
+          ]
+        }
+      }
+    },
+    "p6": {
+      "id": "PR_418",
+      "number": 418,
+      "title": "docket: attach receipts to threads",
+      "url": "https://github.com/heard/docket/pull/418",
+      "state": "OPEN",
+      "isDraft": false,
+      "closedAt": null,
+      "updatedAt": "2026-10-20T12:00:00Z",
+      "createdAt": "2026-10-20T09:00:00Z",
+      "body": "Receipts.",
+      "author": {
+        "login": "sam-k",
+        "__typename": "User"
+      },
+      "repository": {
+        "nameWithOwner": "heard/docket"
+      },
+      "headRefName": "branch-418",
+      "headRefOid": "0000000000000000000000000000000000000418",
+      "baseRefName": "main",
+      "reviewDecision": "REVIEW_REQUIRED",
+      "latestReviews": {
+        "nodes": []
+      },
+      "latestOpinionatedReviews": {
+        "nodes": []
+      },
+      "reviewRequests": {
+        "nodes": [
+          {
+            "asCodeOwner": true,
+            "requestedReviewer": {
+              "__typename": "Team",
+              "slug": "design"
+            }
+          }
+        ]
+      },
+      "timelineItems": {
+        "nodes": []
+      },
+      "commits": {
+        "nodes": [
+          {
+            "commit": {
+              "committedDate": "2026-10-20T09:00:00Z"
+            }
+          }
+        ]
+      },
+      "statusCheckRollup": {
+        "state": "SUCCESS",
+        "contexts": {
+          "nodes": [
+            {
+              "__typename": "CheckRun",
+              "name": "check-0",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "check-1",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "check-2",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            }
+          ]
+        }
+      }
+    },
+    "p7": {
+      "id": "PR_421",
+      "number": 421,
+      "title": "docket: thread unread badge",
+      "url": "https://github.com/heard/docket/pull/421",
+      "state": "OPEN",
+      "isDraft": false,
+      "closedAt": null,
+      "updatedAt": "2026-10-20T12:00:00Z",
+      "createdAt": "2026-10-19T10:00:00Z",
+      "body": "Badge.",
+      "author": {
+        "login": "sam-k",
+        "__typename": "User"
+      },
+      "repository": {
+        "nameWithOwner": "heard/docket"
+      },
+      "headRefName": "branch-421",
+      "headRefOid": "0000000000000000000000000000000000000421",
+      "baseRefName": "main",
+      "reviewDecision": "APPROVED",
+      "latestReviews": {
+        "nodes": [
+          {
+            "state": "APPROVED",
+            "submittedAt": "2026-10-20T08:00:00Z",
+            "author": {
+              "login": "priya-s",
+              "__typename": "User"
+            }
+          }
+        ]
+      },
+      "latestOpinionatedReviews": {
+        "nodes": [
+          {
+            "state": "APPROVED",
+            "submittedAt": "2026-10-20T08:00:00Z",
+            "author": {
+              "login": "priya-s",
+              "__typename": "User"
+            }
+          }
+        ]
+      },
+      "reviewRequests": {
+        "nodes": []
+      },
+      "timelineItems": {
+        "nodes": []
+      },
+      "commits": {
+        "nodes": [
+          {
+            "commit": {
+              "committedDate": "2026-10-19T10:00:00Z"
+            }
+          }
+        ]
+      },
+      "statusCheckRollup": {
+        "state": "SUCCESS",
+        "contexts": {
+          "nodes": [
+            {
+              "__typename": "CheckRun",
+              "name": "check-0",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "check-1",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "check-2",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            }
+          ]
+        }
+      }
+    },
+    "p8": {
+      "id": "PR_430",
+      "number": 430,
+      "title": "docket: archive old threads",
+      "url": "https://github.com/heard/docket/pull/430",
+      "state": "OPEN",
+      "isDraft": false,
+      "closedAt": null,
+      "updatedAt": "2026-10-20T12:00:00Z",
+      "createdAt": "2026-10-19T09:00:00Z",
+      "body": null,
+      "author": {
+        "login": "priya-s",
+        "__typename": "User"
+      },
+      "repository": {
+        "nameWithOwner": "heard/docket"
+      },
+      "headRefName": "branch-430",
+      "headRefOid": "0000000000000000000000000000000000000430",
+      "baseRefName": "main",
+      "reviewDecision": null,
+      "latestReviews": {
+        "nodes": []
+      },
+      "latestOpinionatedReviews": {
+        "nodes": []
+      },
+      "reviewRequests": {
+        "nodes": []
+      },
+      "timelineItems": {
+        "nodes": []
+      },
+      "commits": {
+        "nodes": [
+          {
+            "commit": {
+              "committedDate": "2026-10-19T09:00:00Z"
+            }
+          }
+        ]
+      },
+      "statusCheckRollup": {
+        "state": "SUCCESS",
+        "contexts": {
+          "nodes": [
+            {
+              "__typename": "CheckRun",
+              "name": "check-0",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "check-1",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "check-2",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            }
+          ]
+        }
+      }
+    },
+    "p9": {
+      "id": "PR_431",
+      "number": 431,
+      "title": "docket: thread search",
+      "url": "https://github.com/heard/docket/pull/431",
+      "state": "OPEN",
+      "isDraft": false,
+      "closedAt": null,
+      "updatedAt": "2026-10-20T12:00:00Z",
+      "createdAt": "2026-10-18T09:00:00Z",
+      "body": "Search.",
+      "author": {
+        "login": "priya-s",
+        "__typename": "User"
+      },
+      "repository": {
+        "nameWithOwner": "heard/docket"
+      },
+      "headRefName": "branch-431",
+      "headRefOid": "0000000000000000000000000000000000000431",
+      "baseRefName": "main",
+      "reviewDecision": null,
+      "latestReviews": {
+        "nodes": [
+          {
+            "state": "COMMENTED",
+            "submittedAt": "2026-10-19T12:00:00Z",
+            "author": {
+              "login": "sam-k",
+              "__typename": "User"
+            }
+          }
+        ]
+      },
+      "latestOpinionatedReviews": {
+        "nodes": [
+          {
+            "state": "APPROVED",
+            "submittedAt": "2026-10-19T09:00:00Z",
+            "author": {
+              "login": "sam-k",
+              "__typename": "User"
+            }
+          }
+        ]
+      },
+      "reviewRequests": {
+        "nodes": []
+      },
+      "timelineItems": {
+        "nodes": []
+      },
+      "commits": {
+        "nodes": [
+          {
+            "commit": {
+              "committedDate": "2026-10-18T09:00:00Z"
+            }
+          }
+        ]
+      },
+      "statusCheckRollup": {
+        "state": "SUCCESS",
+        "contexts": {
+          "nodes": [
+            {
+              "__typename": "CheckRun",
+              "name": "check-0",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "check-1",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "check-2",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            }
+          ]
+        }
+      }
+    },
+    "p10": {
+      "id": "PR_1330",
+      "number": 1330,
+      "title": "ci: cache turbo",
+      "url": "https://github.com/heard/heard-ts/pull/1330",
+      "state": "OPEN",
+      "isDraft": false,
+      "closedAt": null,
+      "updatedAt": "2026-10-20T12:00:00Z",
+      "createdAt": "2026-10-15T09:00:00Z",
+      "body": "Mine.",
+      "author": {
+        "login": "jayhogan",
+        "__typename": "User"
+      },
+      "repository": {
+        "nameWithOwner": "heard/heard-ts"
+      },
+      "headRefName": "branch-1330",
+      "headRefOid": "0000000000000000000000000000000000001330",
+      "baseRefName": "main",
+      "reviewDecision": "REVIEW_REQUIRED",
+      "latestReviews": {
+        "nodes": []
+      },
+      "latestOpinionatedReviews": {
+        "nodes": []
+      },
+      "reviewRequests": {
+        "nodes": []
+      },
+      "timelineItems": {
+        "nodes": []
+      },
+      "commits": {
+        "nodes": [
+          {
+            "commit": {
+              "committedDate": "2026-10-15T09:00:00Z"
+            }
+          }
+        ]
+      },
+      "statusCheckRollup": {
+        "state": "SUCCESS",
+        "contexts": {
+          "nodes": [
+            {
+              "__typename": "CheckRun",
+              "name": "check-0",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "check-1",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "check-2",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            }
+          ]
+        }
+      }
+    },
+    "p11": {
+      "id": "PR_1331",
+      "number": 1331,
+      "title": "Bump stripe from 18.1.0 to 18.2.0",
+      "url": "https://github.com/heard/heard-ts/pull/1331",
+      "state": "OPEN",
+      "isDraft": false,
+      "closedAt": null,
+      "updatedAt": "2026-10-20T12:00:00Z",
+      "createdAt": "2026-10-14T09:00:00Z",
+      "body": "Bump.",
+      "author": {
+        "login": "dependabot",
+        "__typename": "Bot"
+      },
+      "repository": {
+        "nameWithOwner": "heard/heard-ts"
+      },
+      "headRefName": "branch-1331",
+      "headRefOid": "0000000000000000000000000000000000001331",
+      "baseRefName": "main",
+      "reviewDecision": "REVIEW_REQUIRED",
+      "latestReviews": {
+        "nodes": []
+      },
+      "latestOpinionatedReviews": {
+        "nodes": []
+      },
+      "reviewRequests": {
+        "nodes": []
+      },
+      "timelineItems": {
+        "nodes": []
+      },
+      "commits": {
+        "nodes": [
+          {
+            "commit": {
+              "committedDate": "2026-10-14T09:00:00Z"
+            }
+          }
+        ]
+      },
+      "statusCheckRollup": {
+        "state": "SUCCESS",
+        "contexts": {
+          "nodes": [
+            {
+              "__typename": "CheckRun",
+              "name": "check-0",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "check-1",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "check-2",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            }
+          ]
+        }
+      }
+    },
+    "p12": {
+      "id": "PR_1332",
+      "number": 1332,
+      "title": "billing: WIP refunds",
+      "url": "https://github.com/heard/heard-ts/pull/1332",
+      "state": "OPEN",
+      "isDraft": true,
+      "closedAt": null,
+      "updatedAt": "2026-10-20T12:00:00Z",
+      "createdAt": "2026-10-14T09:00:00Z",
+      "body": "WIP.",
+      "author": {
+        "login": "maria-chen",
+        "__typename": "User"
+      },
+      "repository": {
+        "nameWithOwner": "heard/heard-ts"
+      },
+      "headRefName": "branch-1332",
+      "headRefOid": "0000000000000000000000000000000000001332",
+      "baseRefName": "main",
+      "reviewDecision": "REVIEW_REQUIRED",
+      "latestReviews": {
+        "nodes": []
+      },
+      "latestOpinionatedReviews": {
+        "nodes": []
+      },
+      "reviewRequests": {
+        "nodes": []
+      },
+      "timelineItems": {
+        "nodes": []
+      },
+      "commits": {
+        "nodes": [
+          {
+            "commit": {
+              "committedDate": "2026-10-14T09:00:00Z"
+            }
+          }
+        ]
+      },
+      "statusCheckRollup": {
+        "state": "SUCCESS",
+        "contexts": {
+          "nodes": [
+            {
+              "__typename": "CheckRun",
+              "name": "check-0",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "check-1",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "check-2",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            }
+          ]
+        }
+      }
+    },
+    "p13": {
+      "id": "PR_1333",
+      "number": 1333,
+      "title": "onboarding: fix intake step order",
+      "url": "https://github.com/heard/heard-ts/pull/1333",
+      "state": "OPEN",
+      "isDraft": false,
+      "closedAt": null,
+      "updatedAt": "2026-10-20T12:00:00Z",
+      "createdAt": "2026-10-19T12:00:00Z",
+      "body": "Order.",
+      "author": null,
+      "repository": {
+        "nameWithOwner": "heard/heard-ts"
+      },
+      "headRefName": "branch-1333",
+      "headRefOid": "0000000000000000000000000000000000001333",
+      "baseRefName": "main",
+      "reviewDecision": "REVIEW_REQUIRED",
+      "latestReviews": {
+        "nodes": []
+      },
+      "latestOpinionatedReviews": {
+        "nodes": []
+      },
+      "reviewRequests": {
+        "nodes": []
+      },
+      "timelineItems": {
+        "nodes": []
+      },
+      "commits": {
+        "nodes": [
+          {
+            "commit": {
+              "committedDate": "2026-10-19T12:00:00Z"
+            }
+          }
+        ]
+      },
+      "statusCheckRollup": {
+        "state": "SUCCESS",
+        "contexts": {
+          "nodes": [
+            {
+              "__typename": "CheckRun",
+              "name": "check-0",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "check-1",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            },
+            {
+              "__typename": "CheckRun",
+              "name": "check-2",
+              "status": "COMPLETED",
+              "conclusion": "SUCCESS",
+              "completedAt": "2026-10-20T08:00:00Z",
+              "isRequired": true
+            }
+          ]
+        }
+      }
+    },
+    "rateLimit": {
+      "cost": 1,
+      "remaining": 4999
+    }
+  }
+}

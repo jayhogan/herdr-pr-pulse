@@ -2,11 +2,13 @@ mod ago;
 mod app;
 mod attention;
 mod changes;
+mod config;
 mod fetch;
 mod git;
 mod github;
 mod herdr;
 mod model;
+mod review;
 mod stacks;
 mod store;
 mod ui;
@@ -31,7 +33,7 @@ use crate::git::{FixtureBranches, GitBranches};
 use crate::github::GhCli;
 use crate::store::StateDir;
 
-const USAGE: &str = "usage: herdr-pr-pulse [workspace|mine] [--fixtures]";
+const USAGE: &str = "usage: herdr-pr-pulse [workspace|mine|review] [--fixtures]";
 const TICK: Duration = Duration::from_secs(1);
 const SNAPSHOT_EVERY: Duration = Duration::from_secs(2);
 
@@ -44,9 +46,16 @@ const FIXTURE_FETCHED_AT: &str = "2026-10-17T14:32:08Z";
 /// Board 6: when you last looked, and when detail-before was fetched.
 const FIXTURE_LAST_LOOKED: &str = "2026-10-17T14:18:00Z";
 
+/// The view chosen at launch: one of the PR Pulse views, or the Review view.
+#[derive(Debug, PartialEq)]
+enum View {
+    Pulse(ViewKind),
+    Review,
+}
+
 #[derive(Debug, PartialEq)]
 struct Args {
-    kind: ViewKind,
+    view: View,
     fixtures: bool,
 }
 
@@ -59,8 +68,9 @@ fn parse_args(args: &[String]) -> Result<Args, String> {
                 fixtures = true;
                 continue;
             }
-            "workspace" => ViewKind::Workspace,
-            "mine" => ViewKind::Mine,
+            "workspace" => View::Pulse(ViewKind::Workspace),
+            "mine" => View::Pulse(ViewKind::Mine),
+            "review" => View::Review,
             other => return Err(format!("unrecognized argument '{other}'")),
         };
         if kind.replace(this).is_some() {
@@ -68,7 +78,7 @@ fn parse_args(args: &[String]) -> Result<Args, String> {
         }
     }
     Ok(Args {
-        kind: kind.unwrap_or(ViewKind::Workspace),
+        view: kind.unwrap_or(View::Pulse(ViewKind::Workspace)),
         fixtures,
     })
 }
@@ -92,7 +102,11 @@ fn main() -> ExitCode {
 }
 
 fn run(args: &Args) -> Result<(), String> {
-    let app = App::new(args.kind, Local::now().offset().fix());
+    let kind = match args.view {
+        View::Pulse(kind) => kind,
+        View::Review => return review::run(args.fixtures),
+    };
+    let app = App::new(kind, Local::now().offset().fix());
     // Folds, seen times and changes persist in the real state dir; fixtures mode keeps them
     // in a throwaway one (removed on exit).
     let fixtures_dir = env::temp_dir().join(format!("herdr-pr-pulse-state-{}", std::process::id()));
@@ -282,7 +296,7 @@ fn run_action(app: &mut App, action: Action, live: Option<&mut Live>) -> bool {
 }
 
 /// `gh pr view <url> --web`, not waited on by the UI: a detached thread reaps the child.
-fn open_in_browser(url: &str) -> Result<(), String> {
+pub(crate) fn open_in_browser(url: &str) -> Result<(), String> {
     let mut child = Command::new("gh")
         .args(["pr", "view", url, "--web"])
         .stdin(Stdio::null())
@@ -338,7 +352,7 @@ mod tests {
         assert_eq!(
             parse(&[]),
             Ok(Args {
-                kind: ViewKind::Workspace,
+                view: View::Pulse(ViewKind::Workspace),
                 fixtures: false
             })
         );
@@ -346,13 +360,25 @@ mod tests {
 
     #[test]
     fn mine_positional() {
-        assert_eq!(parse(&["mine"]).unwrap().kind, ViewKind::Mine);
+        assert_eq!(parse(&["mine"]).unwrap().view, View::Pulse(ViewKind::Mine));
+    }
+
+    #[test]
+    fn review_positional() {
+        assert_eq!(parse(&["review"]).unwrap().view, View::Review);
+        assert!(parse(&["review", "--fixtures"]).unwrap().fixtures);
+    }
+
+    #[test]
+    fn rejects_two_views() {
+        assert!(parse(&["review", "mine"]).is_err());
+        assert!(parse(&["review", "review"]).is_err());
     }
 
     #[test]
     fn flag_and_positional_in_any_order() {
         let want = Ok(Args {
-            kind: ViewKind::Mine,
+            view: View::Pulse(ViewKind::Mine),
             fixtures: true,
         });
         assert_eq!(parse(&["--fixtures", "mine"]), want);
@@ -360,7 +386,7 @@ mod tests {
         assert_eq!(
             parse(&["--fixtures"]),
             Ok(Args {
-                kind: ViewKind::Workspace,
+                view: View::Pulse(ViewKind::Workspace),
                 fixtures: true
             })
         );

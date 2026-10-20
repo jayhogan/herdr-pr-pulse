@@ -1,0 +1,44 @@
+---
+source: src/ui/review.rs
+expression: "text(&draw(&fixture_app(), 34, 40))"
+---
+ PR Pulse · Review          ↻ 18s
+ ★2 code owner  ↩1 waiting
+▶▾ maria-chen  3 PRs · oldest 4d
+ ★  #1298 billing: retry failed S…
+     heard-ts · 4d
+ ★  #1312 billing: proration for …
+     heard-ts · 2d
+    #1320 billing: invoice PDF fo…
+     heard-ts · 5h
+
+▾ dan-o  3 PRs · oldest 3d
+    #87 tax: 2026 bracket table
+     tax-engine · 3d
+    #95 tax: state withholding lo…
+     tax-engine · 2d
+ ↩  #91 tax: quarterly estimate r…
+     tax-engine · 1d
+
+▾ priya-s  1 PR · oldest 1d
+    #430 docket: archive old thre…
+     docket · 1d
+
+▾ ghost  1 PR · oldest 1d
+    #1333 onboarding: fix intake …
+     heard-ts · 1d
+
+▾ sam-k  1 PR · oldest 6h
+    #418 docket: attach receipts …
+     docket · 6h
+
+
+
+
+
+
+
+
+
+
+j/k ␣ info o open ? keys

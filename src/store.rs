@@ -100,7 +100,17 @@ impl StateDir {
     /// Non-blocking: `None` when another instance holds the fetch lock. The
     /// lock is held until the returned file is dropped.
     pub fn try_fetch_lock(&self) -> io::Result<Option<File>> {
-        let file = self.lock_file("fetch.lock")?;
+        self.try_lock_named("fetch.lock")
+    }
+
+    /// Blocking variant, for a manual refresh.
+    pub fn fetch_lock(&self) -> io::Result<File> {
+        self.lock_named("fetch.lock")
+    }
+
+    /// `try_fetch_lock` for the lock file `name`.
+    pub fn try_lock_named(&self, name: &str) -> io::Result<Option<File>> {
+        let file = self.lock_file(name)?;
         match file.try_lock() {
             Ok(()) => Ok(Some(file)),
             Err(TryLockError::WouldBlock) => Ok(None),
@@ -108,16 +118,16 @@ impl StateDir {
         }
     }
 
-    /// Blocking variant, for a manual refresh.
-    pub fn fetch_lock(&self) -> io::Result<File> {
-        let file = self.lock_file("fetch.lock")?;
+    /// `fetch_lock` for the lock file `name`.
+    pub fn lock_named(&self, name: &str) -> io::Result<File> {
+        let file = self.lock_file(name)?;
         file.lock()?;
         Ok(file)
     }
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     fn dir() -> (tempfile::TempDir, StateDir) {
@@ -181,6 +191,22 @@ mod tests {
         assert!(!state.dir.join("cache.json").exists());
     }
 
+    /// `name` can be locked again within a second. A child process another test spawns at
+    /// the same moment holds a copy of every open file until it execs, so a lock dropped
+    /// here can stay held for that instant.
+    pub(crate) fn relocks(state: &StateDir, name: &str) -> bool {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+        loop {
+            if state.try_lock_named(name).unwrap().is_some() {
+                return true;
+            }
+            if std::time::Instant::now() >= deadline {
+                return false;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
+
     #[test]
     fn fetch_lock_is_exclusive() {
         let (_tmp, state) = dir();
@@ -188,6 +214,6 @@ mod tests {
         assert!(first.is_some());
         assert!(state.try_fetch_lock().unwrap().is_none());
         drop(first);
-        assert!(state.try_fetch_lock().unwrap().is_some());
+        assert!(relocks(&state, "fetch.lock"));
     }
 }

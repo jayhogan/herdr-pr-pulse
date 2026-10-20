@@ -1,0 +1,8 @@
+query PrPulseReviewSearch($q: String!, $after: String) {
+  viewer { login }
+  search(query: $q, type: ISSUE, first: 100, after: $after) {
+    pageInfo { hasNextPage endCursor }
+    nodes { ... on PullRequest { id repository { nameWithOwner } } }
+  }
+  rateLimit { cost remaining }
+}
