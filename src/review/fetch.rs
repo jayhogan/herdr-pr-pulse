@@ -369,6 +369,6 @@ mod tests {
         assert!(review.is_some());
         assert!(state.try_lock_named(LOCK).unwrap().is_none());
         drop(review);
-        assert!(state.try_lock_named(LOCK).unwrap().is_some());
+        assert!(crate::store::tests::relocks(&state, LOCK));
     }
 }

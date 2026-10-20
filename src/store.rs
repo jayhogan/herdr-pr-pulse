@@ -127,7 +127,7 @@ impl StateDir {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     fn dir() -> (tempfile::TempDir, StateDir) {
@@ -191,6 +191,22 @@ mod tests {
         assert!(!state.dir.join("cache.json").exists());
     }
 
+    /// `name` can be locked again within a second. A child process another test spawns at
+    /// the same moment holds a copy of every open file until it execs, so a lock dropped
+    /// here can stay held for that instant.
+    pub(crate) fn relocks(state: &StateDir, name: &str) -> bool {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+        loop {
+            if state.try_lock_named(name).unwrap().is_some() {
+                return true;
+            }
+            if std::time::Instant::now() >= deadline {
+                return false;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
+
     #[test]
     fn fetch_lock_is_exclusive() {
         let (_tmp, state) = dir();
@@ -198,6 +214,6 @@ mod tests {
         assert!(first.is_some());
         assert!(state.try_fetch_lock().unwrap().is_none());
         drop(first);
-        assert!(state.try_fetch_lock().unwrap().is_some());
+        assert!(relocks(&state, "fetch.lock"));
     }
 }
