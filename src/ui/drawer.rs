@@ -505,7 +505,6 @@ pub fn drawer_lines(row: &RowView, width: u16, now: DateTime<Utc>) -> Vec<Line<'
 
 /// The Review view's details under `row`: the description, then CI and Reviews (everyone
 /// but `viewer`), laid out as the drawer above.
-#[allow(dead_code)] // wired up with the review view
 pub fn review_drawer_lines(
     row: &ReviewRow,
     viewer: &str,

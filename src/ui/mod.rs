@@ -2,7 +2,6 @@ mod cells;
 mod chrome;
 mod drawer;
 pub mod help;
-#[allow(dead_code)] // wired up with the review view
 pub mod review;
 pub mod rows;
 mod states;

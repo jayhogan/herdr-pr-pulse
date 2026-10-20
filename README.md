@@ -50,8 +50,8 @@ herdr plugin link ~/dev/herdr-pr-pulse   # builds, registers the plugin
 
 ## Use
 
-Run `herdr-pr-pulse workspace` or `herdr-pr-pulse mine` in a pane; the view is
-chosen at launch. With herdr-plugin-workspace-manager:
+Run `herdr-pr-pulse workspace`, `herdr-pr-pulse mine` or `herdr-pr-pulse review`
+([below](#review-view)) in a pane; the view is chosen at launch. With herdr-plugin-workspace-manager:
 
 ```yaml
 # in each working workspace
@@ -74,6 +74,46 @@ it works for agent panes.
 The layout adapts to pane width: Wide (120+ columns), Medium (80-119), Narrow
 (40-79), Tiny (under 40).
 
+## Review view
+
+`herdr-pr-pulse review` lists other people's PRs that are waiting on review, in the repos
+you configure. It shows PRs that are marked ready (not drafts), skips dependabot's and
+your own, and groups them by author, with the longest-waiting first. READY is the time since
+the PR was last marked ready for review, not since it was opened.
+
+```
+ PR Pulse · Review │ 9 PRs · 5 people · 3 repos     group: user  show: not approved │ ↻ 18s
+ ★2 code owner  ↩1 waiting on author
+─────────────────────────────────────────────────────────────────────────────────────────
+     #      TITLE                                          REPO          USER          READY
+▶▾ maria-chen  3 PRs · oldest 4d
+  ★  #1298  billing: retry failed Stripe webhooks          heard-ts      maria-chen    4d
+  ★  #1312  billing: proration for mid-cycle plan change   heard-ts      maria-chen    2d
+     #1320  billing: invoice PDF footer copy               heard-ts      maria-chen    5h
+
+▾ dan-o  3 PRs · oldest 3d
+     #87    tax: 2026 bracket table                        tax-engine    dan-o         3d
+  ↩  #91    tax: quarterly estimate rounding               tax-engine    dan-o         1d
+```
+
+- `★` (yellow): GitHub requested a review from one of your teams as code owner. GitHub
+  drops that request once someone on the team reviews, so the star goes away then.
+- `↩` (dim row): you requested changes and the author hasn't pushed since.
+
+Configure the repos in `~/.config/herdr-pr-pulse/config.toml` (or under
+`$XDG_CONFIG_HOME`). The file is read when the pane starts, so relaunch it after a change:
+
+```toml
+[review]
+repos = ["Heard-Mental-Health/heard-ts", "Heard-Mental-Health/heard-app"]
+```
+
+Keys: `j`/`k` move, `␣` opens a PR's details (first 5 lines of the description, CI,
+other reviewers) or folds a group, `h`/`l` fold, `o` open in browser, `r` refresh, `g`
+group by user or repo, `a` switch between not approved and approved, `?` help, `q` quits.
+The ★ needs your teams, so the `gh` token needs `read:org` (`gh auth refresh -s read:org`).
+The view doesn't need a herdr pane; it runs in any terminal.
+
 ## How it works
 
 - Each refresh is two GraphQL requests through `gh`: a cheap search for PR ids,
@@ -83,6 +123,8 @@ The layout adapts to pane width: Wide (120+ columns), Medium (80-119), Narrow
   `~/.local/state/herdr-pr-pulse/cache.json`; a copy fetches only when the cache
   is over 60 s old (guarded by a lock file), and `r` forces one. herdr is read
   every 2 s.
+- The Review view keeps its own `review-cache.json`, fetch lock and `review-folds.json`
+  in the same directory, so it never waits on the other views' fetch.
 - The state directory also holds `workspaces.json` (PRs seen per checkout),
   `changes.json` (field fingerprints and change times), `seen.json` (last looked
   at times) and `folds.json`.
@@ -99,6 +141,7 @@ The layout adapts to pane width: Wide (120+ columns), Medium (80-119), Narrow
 cargo test
 cargo clippy --all-targets
 cargo run -- mine --fixtures      # no network, no herdr
+cargo run -- review --fixtures    # the Review view on fixture data
 cargo insta review                # after a UI snapshot change
 cargo test live_ -- --ignored     # hits GitHub with your gh login
 ```

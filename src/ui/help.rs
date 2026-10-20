@@ -360,7 +360,6 @@ pub fn help_lines(width: u16) -> Vec<Line<'static>> {
 
 /// The Review view's `?` overlay: its two marks, the details' glyphs and its keys, in one
 /// column.
-#[allow(dead_code)] // wired up with the review view
 pub fn review_help_lines(width: u16) -> Vec<Line<'static>> {
     let width = width as usize;
     let show_color = width >= 60;
