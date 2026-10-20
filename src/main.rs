@@ -2,6 +2,8 @@ mod ago;
 mod app;
 mod attention;
 mod changes;
+#[allow(dead_code)] // wired up with the review view
+mod config;
 mod fetch;
 mod git;
 mod github;
