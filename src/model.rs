@@ -179,7 +179,7 @@ impl Ci {
 // ---- raw JSON shapes ----
 
 #[derive(Deserialize)]
-struct Nodes<T> {
+pub(crate) struct Nodes<T> {
     #[serde(default = "Vec::new")]
     nodes: Vec<Option<T>>,
 }
@@ -190,7 +190,7 @@ impl<T> Nodes<T> {
     }
 }
 
-fn nodes_of<T>(n: Option<Nodes<T>>) -> Vec<T> {
+pub(crate) fn nodes_of<T>(n: Option<Nodes<T>>) -> Vec<T> {
     n.map(Nodes::items).unwrap_or_default()
 }
 
@@ -515,7 +515,7 @@ fn convert_pr(raw: RawPr) -> Pr {
 }
 
 /// The `data` object of a response, or a readable error (including GraphQL `errors`).
-fn data_of(json: &str) -> Result<Value, String> {
+pub(crate) fn data_of(json: &str) -> Result<Value, String> {
     let mut v: Value = serde_json::from_str(json).map_err(|e| format!("invalid JSON: {e}"))?;
     match v.get_mut("data").map(Value::take) {
         Some(d) if d.is_object() => Ok(d),
@@ -575,12 +575,15 @@ pub fn parse_detail(json: &str) -> Result<Vec<Pr>, String> {
     aliases
         .into_iter()
         .filter(|(_, v)| !v.is_null())
-        .map(|(i, v)| {
-            serde_json::from_value::<RawPr>(v)
-                .map(convert_pr)
-                .map_err(|e| format!("bad PR in alias p{i}: {e}"))
-        })
+        .map(|(i, v)| pr_from_value(v).map_err(|e| format!("bad PR in alias p{i}: {e}")))
         .collect()
+}
+
+/// One PR object from a detail response (the `prFields` shape, or any superset of it).
+pub(crate) fn pr_from_value(v: Value) -> Result<Pr, String> {
+    serde_json::from_value::<RawPr>(v)
+        .map(convert_pr)
+        .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]

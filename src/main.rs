@@ -9,6 +9,8 @@ mod git;
 mod github;
 mod herdr;
 mod model;
+#[allow(dead_code)] // wired up with the review view
+mod review;
 mod stacks;
 mod store;
 mod ui;
