@@ -541,6 +541,7 @@ mod tests {
     use super::*;
     use crate::config::ReviewConfig;
     use crate::review::app::{ReviewApp, fixture_app};
+    use crate::ui::drawer::DESCRIPTION_MAX_LINES;
 
     fn now() -> DateTime<Utc> {
         "2026-10-20T15:00:18Z".parse().unwrap()
@@ -645,6 +646,25 @@ mod tests {
     #[test]
     fn review_drawer_44_on_1312() {
         insta::assert_snapshot!(text(&draw(&with_drawer(1312), 44, 50)));
+    }
+
+    #[test]
+    fn long_description_is_clipped_so_ci_shows() {
+        let mut a = fixture_app();
+        let mut c = crate::review::fixture_cache().unwrap();
+        let long = "word ".repeat(120);
+        for p in c.prs.iter_mut().filter(|p| p.pr.number == 1312) {
+            p.description = vec![long.trim().to_string(), "Second line.".into()];
+        }
+        a.set_cache(c);
+        select(&mut a, 1312);
+        press(&mut a, ' ');
+        let lines = text_lines(&draw(&a, 44, 60));
+        let row = lines.iter().position(|l| l.contains("#1312")).unwrap();
+        let ci = lines.iter().position(|l| l.contains("┌ CI")).unwrap();
+        let description = &lines[row + 2..ci];
+        assert_eq!(description.len(), DESCRIPTION_MAX_LINES, "{description:#?}");
+        assert!(description.last().unwrap().ends_with('…'));
     }
 
     #[test]

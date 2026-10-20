@@ -503,6 +503,9 @@ pub fn drawer_lines(row: &RowView, width: u16, now: DateTime<Utc>) -> Vec<Line<'
     }
 }
 
+/// Most screen lines the Review view's description takes, so CI and Reviews stay in view.
+pub(crate) const DESCRIPTION_MAX_LINES: usize = 8;
+
 /// The Review view's details under `row`: the description, then CI and Reviews (everyone
 /// but `viewer`), laid out as the drawer above.
 pub fn review_drawer_lines(
@@ -524,12 +527,21 @@ pub fn review_drawer_lines(
     if description.is_empty() {
         out.push(Line::from(vec![dim(lead), dim("no description")]));
     }
-    for text in description {
-        for l in wrap(vec![span(text.clone(), Style::new())], room) {
-            let mut spans = vec![dim(lead)];
-            spans.extend(clip(l, room));
-            out.push(Line::from(spans));
-        }
+    let mut wrapped: Vec<Vec<Span<'static>>> = description
+        .iter()
+        .flat_map(|text| wrap(vec![span(text.clone(), Style::new())], room))
+        .collect();
+    if wrapped.len() > DESCRIPTION_MAX_LINES {
+        wrapped.truncate(DESCRIPTION_MAX_LINES);
+        // Clipped: the last line ends in `…`, even when it would fit.
+        let last = wrapped.last_mut().expect("not empty");
+        let text: String = last.iter().map(|s| s.content.as_ref()).collect();
+        *last = vec![span(fit(&format!("{text} …"), room), Style::new())];
+    }
+    for l in wrapped {
+        let mut spans = vec![dim(lead)];
+        spans.extend(clip(l, room));
+        out.push(Line::from(spans));
     }
     let reviewers: Vec<Reviewer> = row
         .pr
