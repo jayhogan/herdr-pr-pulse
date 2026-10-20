@@ -470,6 +470,15 @@ mod tests {
         v.to_string()
     }
 
+    /// gh exits 1 with `data: null` when GitHub rejects the search; its stderr names why.
+    #[test]
+    fn finish_reports_a_rejected_search_from_stderr() {
+        let body = r#"{"data":null,"errors":[{"message":"cannot be searched"}]}"#;
+        let stderr = "gh: The listed users and repositories cannot be searched either because the resources do not exist or you do not have permission to view them.";
+        let err = finish(Ok(()), false, body, stderr).unwrap_err();
+        assert!(err.message().contains("cannot be searched"), "{err:?}");
+    }
+
     #[test]
     fn finish_keeps_partial_data_on_failure() {
         let body = partial_body("Could not resolve to a node with the global id of 'X'.");

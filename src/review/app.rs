@@ -2,6 +2,7 @@
 //! group and order, and what each key does.
 
 use std::collections::BTreeSet;
+use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -103,6 +104,8 @@ enum Selection {
 
 pub struct ReviewApp {
     config: ReviewConfig,
+    /// Where the config file is, for fixes that point at it.
+    config_path: Option<PathBuf>,
     group_by: GroupBy,
     show: Show,
     cursor: usize,
@@ -143,6 +146,7 @@ impl ReviewApp {
     pub fn new(config: ReviewConfig) -> ReviewApp {
         ReviewApp {
             config,
+            config_path: None,
             group_by: GroupBy::User,
             show: Show::NotApproved,
             cursor: 0,
@@ -168,6 +172,12 @@ impl ReviewApp {
             Err(e) => self.status = Some(format!("folds not loaded: {e}")),
         }
         self.state = Some(state);
+        self
+    }
+
+    /// The config file's location, named in the fix for a repo GitHub can't search.
+    pub fn with_config_path(mut self, path: PathBuf) -> ReviewApp {
+        self.config_path = Some(path);
         self
     }
 
@@ -298,10 +308,21 @@ impl ReviewApp {
                 message: format!("config: {message}"),
                 fix: format!("Fix {}, then relaunch the pane.", path.display()),
             }),
-            (_, Some(e)) => Some(Banner {
-                message: e.message(),
-                fix: e.fix(),
-            }),
+            (_, Some(e)) => {
+                let message = e.message();
+                // GitHub rejects the whole search when a configured repo is missing or
+                // hidden: retrying can't help, the config can.
+                let unsearchable = message.contains("cannot be searched")
+                    || message.contains("Could not resolve to a Repository");
+                let fix = match (&self.config_path, unsearchable) {
+                    (Some(path), true) => format!(
+                        "Check the repos in {}, then relaunch the pane.",
+                        path.display()
+                    ),
+                    _ => e.fix(),
+                };
+                Some(Banner { message, fix })
+            }
             _ => None,
         };
         let groups = self.groups();
@@ -748,6 +769,34 @@ mod tests {
         assert!(s.stale);
         assert_eq!(s.prs, 9);
         assert!(s.banner.unwrap().message.contains("cannot be searched"));
+    }
+
+    const NOT_SEARCHABLE: &str = "gh: The listed users and repositories cannot be searched \
+         either because the resources do not exist or you do not have permission to view them.";
+
+    #[test]
+    fn unsearchable_repo_points_at_the_config() {
+        let mut a = ReviewApp::new(ReviewConfig::Repos(vec!["heard/nope".into()]))
+            .with_config_path("/c.toml".into());
+        a.apply(ReviewEvent::Done(ReviewCache {
+            error: Some(GhError::Other(NOT_SEARCHABLE.into())),
+            ..ReviewCache::default()
+        }));
+        let banner = a.screen(now()).banner.unwrap();
+        assert!(banner.message.contains("cannot be searched"));
+        assert_eq!(
+            banner.fix,
+            "Check the repos in /c.toml, then relaunch the pane."
+        );
+        // Other errors keep gh's own fix.
+        a.apply(ReviewEvent::Done(ReviewCache {
+            error: Some(GhError::LoginExpired),
+            ..ReviewCache::default()
+        }));
+        assert_eq!(
+            a.screen(now()).banner.unwrap().fix,
+            GhError::LoginExpired.fix()
+        );
     }
 
     #[test]

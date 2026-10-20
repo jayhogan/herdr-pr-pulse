@@ -454,7 +454,6 @@ fn loading_lines(s: &ReviewScreen, p: &LoadProgress, width: usize) -> Vec<Line<'
         let spans = vec![
             Span::styled(" ✗ ", theme::red_bold()),
             Span::styled("No PR data yet.", theme::bold()),
-            Span::styled("  Press r to retry.", theme::dim()),
         ];
         return vec![clip(spans, width)];
     }
@@ -739,6 +738,23 @@ mod tests {
         let t = text(&buf);
         assert!(t.contains("GitHub login expired"));
         assert!(t.contains("offline"));
+    }
+
+    #[test]
+    fn error_before_data_defers_to_the_banner_fix() {
+        let mut a = ReviewApp::new(ReviewConfig::Repos(vec!["heard/nope".into()]))
+            .with_config_path("/c.toml".into());
+        a.apply(crate::review::fetch::ReviewEvent::Done(
+            crate::review::fetch::ReviewCache {
+                error: Some(crate::github::GhError::Other(
+                    "gh: The listed users and repositories cannot be searched".into(),
+                )),
+                ..Default::default()
+            },
+        ));
+        let t = text(&draw(&a, 120, 12));
+        assert!(t.contains("Check the repos in /c.toml"), "{t}");
+        assert!(!t.contains("Press r to retry"), "{t}");
     }
 
     #[test]

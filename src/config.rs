@@ -75,9 +75,14 @@ pub fn parse_review(text: &str, path: &Path) -> ReviewConfig {
     }
 }
 
+/// Where this process reads its config.
+pub fn default_path() -> PathBuf {
+    path(env::var_os("XDG_CONFIG_HOME"), env::var_os("HOME"))
+}
+
 /// Reads the config file once, at startup.
 pub fn load_review() -> ReviewConfig {
-    let path = path(env::var_os("XDG_CONFIG_HOME"), env::var_os("HOME"));
+    let path = default_path();
     match fs::read_to_string(&path) {
         Ok(text) => parse_review(&text, &path),
         Err(e) if e.kind() == io::ErrorKind::NotFound => ReviewConfig::Missing { path },

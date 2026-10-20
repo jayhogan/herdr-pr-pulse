@@ -53,7 +53,9 @@ pub fn run(fixtures: bool) -> Result<(), String> {
     let (mut app, mut live) = if fixtures {
         (fixture_app(), None)
     } else {
-        let app = ReviewApp::new(config::load_review()).with_state(StateDir::default_location());
+        let app = ReviewApp::new(config::load_review())
+            .with_config_path(config::default_path())
+            .with_state(StateDir::default_location());
         let live = (!app.repos().is_empty()).then(|| Live::start(app.repos()));
         (app, live)
     };
