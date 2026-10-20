@@ -93,12 +93,9 @@ use review auto-assignment (which would replace the team request with named memb
 them is a catch-all `*` owner, so the signal stays meaningful (Jay). A request that names the
 viewer directly as code owner also counts.
 
-**Risk the builder must check first:** once a teammate reviews on the team's behalf, GitHub may
-remove the team's review request, and ★ would disappear with it. Verify this against a live PR
-early, before building the UI. If ★ does disappear, the fallback is to read each repo's
-`CODEOWNERS` (`.github/`, root, `docs/`; cached per repo and base-branch head), match it against
-the PR's changed files (`files(first: 100)`), and test whether a viewer team owns any of them.
-Either way, the rule is "one of my teams owns code this PR touches."
+**Checked (2026-10-20):** GitHub removes a team's code-owner request once a team member reviews
+(heard-ts #1787, #1771). Jay accepted this: ★ shows until someone on the team has reviewed, and no
+CODEOWNERS-file fallback is built.
 
 ### Fetching
 
