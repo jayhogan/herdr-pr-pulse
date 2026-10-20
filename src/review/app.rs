@@ -382,12 +382,16 @@ impl ReviewApp {
         }
     }
 
-    /// The PRs `show` lists from `c`.
+    /// The PRs `show` lists from `c`, in this copy's configured repos only (another copy
+    /// with other repos may have written the cache).
     fn listed<'a>(&self, c: &'a ReviewCache, show: Show) -> impl Iterator<Item = &'a ReviewPr> {
         let viewer = c.viewer.clone();
-        c.prs
-            .iter()
-            .filter(move |p| p.included(&viewer) && p.approved() == (show == Show::Approved))
+        let repos = self.repos();
+        c.prs.iter().filter(move |p| {
+            repos.iter().any(|r| r.eq_ignore_ascii_case(&p.pr.repo))
+                && p.included(&viewer)
+                && p.approved() == (show == Show::Approved)
+        })
     }
 
     /// The listed PRs, grouped: groups by their oldest ready time, rows by ready time, then
@@ -823,6 +827,13 @@ mod tests {
         assert!(matches!(s.body, ReviewBody::Loading(_)));
         assert!(s.banner.is_some());
         assert!(!s.fetching);
+    }
+
+    #[test]
+    fn only_configured_repos_are_listed() {
+        let mut a = ReviewApp::new(ReviewConfig::Repos(vec!["Heard/Heard-TS".into()]));
+        a.set_cache(cache_with(|_| true));
+        assert_eq!(numbers(&a), [vec![1298, 1312, 1320], vec![1333]]);
     }
 
     #[test]

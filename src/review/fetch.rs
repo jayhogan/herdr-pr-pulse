@@ -27,6 +27,9 @@ pub struct ReviewCache {
     pub version: u32,
     pub fetched_at: Option<DateTime<Utc>>,
     pub viewer: String,
+    /// The configured repos this was fetched for.
+    #[serde(default)]
+    pub repos: Vec<String>,
     /// org → the viewer's team slugs; None when the lookup failed (no ★, notice shown).
     pub teams: Option<BTreeMap<String, Vec<String>>>,
     pub prs: Vec<ReviewPr>,
@@ -66,6 +69,12 @@ pub fn spawn(
     (req_tx, ev_rx)
 }
 
+/// The same repos, in any order and letter case.
+fn same_repos(a: &[String], b: &[String]) -> bool {
+    let set = |r: &[String]| -> BTreeSet<String> { r.iter().map(|r| r.to_lowercase()).collect() };
+    set(a) == set(b)
+}
+
 /// The UI stopped listening.
 struct Gone;
 
@@ -95,7 +104,12 @@ impl Worker {
             Err(_) => (None, true),
         };
         let cache = self.load();
-        let age = cache.fetched_at.max(cache.error_at).map(|t| Utc::now() - t);
+        // A copy launched with other repos wrote it: as good as no cache.
+        let age = cache
+            .fetched_at
+            .max(cache.error_at)
+            .filter(|_| same_repos(&cache.repos, &self.repos))
+            .map(|t| Utc::now() - t);
         match decide(req, age, have_lock) {
             Plan::UseCache => self.send(ReviewEvent::Done(cache)),
             Plan::WaitForOther => {
@@ -182,6 +196,7 @@ impl Worker {
             version: CACHE_VERSION,
             fetched_at: Some(started),
             viewer,
+            repos: self.repos.clone(),
             teams,
             prs,
             error: None,
@@ -322,6 +337,7 @@ mod tests {
             version: CACHE_VERSION,
             fetched_at: Some(Utc::now() - Duration::seconds(fetched_ago)),
             viewer: "jayhogan".into(),
+            repos: repos(),
             teams: Some(BTreeMap::new()),
             prs: prs.into_iter().take(1).collect(),
             error: None,
@@ -355,6 +371,28 @@ mod tests {
         let (state, cache) = seeded(tmp.path(), 10);
         // No canned responses: any gh call would fail the fetch.
         let (tx, rx) = spawn(Box::new(FakeGh::new()), state, repos());
+        tx.send(FetchRequest::Scheduled).unwrap();
+        assert_eq!(until_done(&rx), vec![ReviewEvent::Done(cache)]);
+    }
+
+    #[test]
+    fn cache_for_other_repos_is_refetched() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (state, _) = seeded(tmp.path(), 10);
+        let other = vec!["heard/other".to_string()];
+        let (tx, rx) = spawn(Box::new(fake()), state, other.clone());
+        tx.send(FetchRequest::Scheduled).unwrap();
+        let evs = until_done(&rx);
+        assert_eq!(evs[0], ReviewEvent::Started);
+        assert_eq!(done(&evs).repos, other);
+    }
+
+    #[test]
+    fn same_repos_in_other_case_use_the_cache() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (state, cache) = seeded(tmp.path(), 10);
+        let upper = repos().iter().map(|r| r.to_uppercase()).collect();
+        let (tx, rx) = spawn(Box::new(FakeGh::new()), state, upper);
         tx.send(FetchRequest::Scheduled).unwrap();
         assert_eq!(until_done(&rx), vec![ReviewEvent::Done(cache)]);
     }

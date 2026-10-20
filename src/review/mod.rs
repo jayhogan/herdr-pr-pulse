@@ -41,6 +41,7 @@ pub fn fixture_cache() -> Result<ReviewCache, String> {
         version: 1,
         fetched_at: Some(fetched_at),
         viewer: search.viewer,
+        repos: FIXTURE_REPOS.map(String::from).to_vec(),
         teams: Some([("heard".to_string(), teams)].into()),
         prs: model::parse_review_detail(DETAIL)?,
         error: None,
