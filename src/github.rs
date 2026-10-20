@@ -175,7 +175,7 @@ const SEARCH_QUERY: &str = include_str!("query/search.graphql");
 const PR_FIELDS: &str = include_str!("query/pr_fields.graphql");
 
 /// A 200 response whose `errors` mention SAML maps to `SamlSso`.
-fn check_saml(body: &str) -> Result<(), GhError> {
+pub(crate) fn check_saml(body: &str) -> Result<(), GhError> {
     let Ok(v) = serde_json::from_str::<Value>(body) else {
         return Ok(()); // the parser reports malformed bodies
     };
@@ -190,6 +190,17 @@ pub fn search(gh: &dyn Gh) -> Result<SearchResult, GhError> {
     let body = gh.graphql(SEARCH_QUERY, &json!({}))?;
     check_saml(&body)?;
     model::parse_search(&body).map_err(GhError::Other)
+}
+
+/// The CI rollup for alias `n`; `isRequired` needs the PR's own id, so it can't sit in a
+/// fragment.
+pub(crate) fn rollup_fields(n: usize) -> String {
+    format!(
+        "statusCheckRollup {{ state contexts(first: 100) {{ nodes {{ __typename \
+         ... on CheckRun {{ name status conclusion completedAt isRequired(pullRequestId: $id{n}) }} \
+         ... on StatusContext {{ name: context state completedAt: createdAt isRequired(pullRequestId: $id{n}) }} \
+         }} }} }}"
+    )
 }
 
 pub fn detail_query(targets: &[Target]) -> (String, Value) {
@@ -207,12 +218,9 @@ pub fn detail_query(targets: &[Target]) -> (String, Value) {
             }
             None => String::new(),
         };
+        let rollup = rollup_fields(n);
         aliases.push_str(&format!(
-            "  p{n}: node(id: $id{n}) {{ ...prFields ... on PullRequest {{ \
-             statusCheckRollup {{ state contexts(first: 100) {{ nodes {{ __typename \
-             ... on CheckRun {{ name status conclusion completedAt isRequired(pullRequestId: $id{n}) }} \
-             ... on StatusContext {{ name: context state completedAt: createdAt isRequired(pullRequestId: $id{n}) }} \
-             }} }} }}{base} }} }}\n"
+            "  p{n}: node(id: $id{n}) {{ ...prFields ... on PullRequest {{ {rollup}{base} }} }}\n"
         ));
     }
     let query = format!(
@@ -274,11 +282,15 @@ pub(crate) mod fake {
 
     impl Gh for FakeGh {
         fn graphql(&self, query: &str, variables: &Value) -> Result<String, GhError> {
-            let kind = if query.contains("PrPulseSearch") {
-                "search"
-            } else {
-                "detail"
-            };
+            let kind = [
+                ("PrPulseReviewSearch", "review-search"),
+                ("PrPulseReviewTeams", "review-teams"),
+                ("PrPulseReviewDetail", "review-detail"),
+                ("PrPulseSearch", "search"),
+            ]
+            .into_iter()
+            .find(|(name, _)| query.contains(name))
+            .map_or("detail", |(_, kind)| kind);
             self.calls.borrow_mut().push((kind, variables.clone()));
             self.responses
                 .borrow()
