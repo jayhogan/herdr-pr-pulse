@@ -9,7 +9,8 @@ use ratatui::text::{Line, Span};
 
 use crate::ago;
 use crate::app::RowView;
-use crate::model::{MergeState, ReviewState, Reviewer};
+use crate::model::{Ci, MergeState, ReviewState, Reviewer};
+use crate::review::app::ReviewRow;
 use crate::ui::cells::{dw, fit};
 use crate::ui::theme;
 
@@ -88,8 +89,7 @@ fn padded(text: &str, width: usize) -> String {
 
 // ---------------------------------------------------------------- sections
 
-fn ci_section(row: &RowView, mode: Mode, now: DateTime<Utc>) -> Section {
-    let ci = &row.pr.ci;
+fn ci_section(ci: &Ci, mode: Mode, now: DateTime<Utc>) -> Section {
     let mut items = Vec::new();
     for check in &ci.failing {
         let mut item = Item::new(vec![
@@ -140,7 +140,7 @@ fn ci_section(row: &RowView, mode: Mode, now: DateTime<Utc>) -> Section {
     Section { title: "CI", items }
 }
 
-fn review_item(r: &Reviewer, mode: Mode, login_min: usize) -> Item {
+fn review_item(r: &Reviewer, mode: Mode, login_min: usize, code_owner: bool) -> Item {
     let (glyph, style, words) = match r.state {
         ReviewState::Approved => ("✓", theme::green(), ["approved", "ok"]),
         ReviewState::ChangesRequested => ("✗", theme::red(), ["changes", "chg"]),
@@ -166,6 +166,9 @@ fn review_item(r: &Reviewer, mode: Mode, login_min: usize) -> Item {
         span(padded(&login, login_w), Style::new()),
         span(padded(word, state_w), style),
     ]);
+    if code_owner {
+        item.left.push(dim(" (code owner)"));
+    }
     if r.unresolved_threads > 0 {
         item.right = Some(span(
             format!("◇{} open", r.unresolved_threads),
@@ -175,9 +178,9 @@ fn review_item(r: &Reviewer, mode: Mode, login_min: usize) -> Item {
     item
 }
 
-fn reviews_section(row: &RowView, mode: Mode) -> Section {
-    let (bots, people): (Vec<&Reviewer>, Vec<&Reviewer>) =
-        row.pr.reviewers.iter().partition(|r| r.is_bot);
+/// `code_owners`: logins and team slugs requested as code owner, marked as such.
+fn reviews_section(reviewers: &[Reviewer], code_owners: &[String], mode: Mode) -> Section {
+    let (bots, people): (Vec<&Reviewer>, Vec<&Reviewer>) = reviewers.iter().partition(|r| r.is_bot);
     let mut items = Vec::new();
     if people.is_empty() && bots.is_empty() {
         items.push(Item::new(vec![span("∅ no reviewers", theme::dim())]));
@@ -190,7 +193,11 @@ fn reviews_section(row: &RowView, mode: Mode) -> Section {
         }
         // Logins line up within a group, not across People and Bots.
         let login_min = group.iter().map(|r| dw(&r.login) + 3).max().unwrap_or(0);
-        items.extend(group.into_iter().map(|r| review_item(r, mode, login_min)));
+        items.extend(
+            group
+                .into_iter()
+                .map(|r| review_item(r, mode, login_min, code_owners.contains(&r.login))),
+        );
     }
     Section {
         title: "Reviews",
@@ -482,8 +489,8 @@ pub fn drawer_lines(row: &RowView, width: u16, now: DateTime<Utc>) -> Vec<Line<'
     let mode = Mode::of(width);
     let w = width as usize;
     let mut sections = vec![
-        ci_section(row, mode, now),
-        reviews_section(row, mode),
+        ci_section(&row.pr.ci, mode, now),
+        reviews_section(&row.pr.reviewers, &[], mode),
         merge_section(row, mode),
     ];
     sections.extend(changed_section(row));
@@ -494,4 +501,53 @@ pub fn drawer_lines(row: &RowView, width: u16, now: DateTime<Utc>) -> Vec<Line<'
     } else {
         stacked(sections, w, closing)
     }
+}
+
+/// The Review view's details under `row`: the description, then CI and Reviews (everyone
+/// but `viewer`), laid out as the drawer above.
+#[allow(dead_code)] // wired up with the review view
+pub fn review_drawer_lines(
+    row: &ReviewRow,
+    viewer: &str,
+    width: u16,
+    now: DateTime<Utc>,
+) -> Vec<Line<'static>> {
+    let mode = Mode::of(width);
+    let w = width as usize;
+    let lead = match mode {
+        Mode::Wide => "     │ ",
+        Mode::Medium => "    │ ",
+        Mode::Narrow | Mode::Tiny => " │  ",
+    };
+    let room = w.saturating_sub(dw(lead));
+    let mut out = Vec::new();
+    let description = &row.pr.description;
+    if description.is_empty() {
+        out.push(Line::from(vec![dim(lead), dim("no description")]));
+    }
+    for text in description {
+        for l in wrap(vec![span(text.clone(), Style::new())], room) {
+            let mut spans = vec![dim(lead)];
+            spans.extend(clip(l, room));
+            out.push(Line::from(spans));
+        }
+    }
+    let reviewers: Vec<Reviewer> = row
+        .pr
+        .pr
+        .reviewers
+        .iter()
+        .filter(|r| r.login != viewer)
+        .cloned()
+        .collect();
+    let sections = vec![
+        ci_section(&row.pr.pr.ci, mode, now),
+        reviews_section(&reviewers, &row.pr.code_owner_requests, mode),
+    ];
+    out.extend(if mode.side_by_side() {
+        side_by_side(sections, mode, w, false)
+    } else {
+        stacked(sections, w, false)
+    });
+    out
 }

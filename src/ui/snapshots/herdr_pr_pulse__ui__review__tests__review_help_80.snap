@@ -1,0 +1,34 @@
+---
+source: src/ui/review.rs
+expression: "text(&draw(&a, 80, 30))"
+---
+ PR Pulse · Review │ 9 PRs                          user · not approved │ ↻ 18s
+ ★2 code owner  ↩1 waiting on author
+────────────────────────────────────────────────────────────────────────────────
+ MARKS (left of the PR number)
+ ★        yellow      a team of yours is a requested code owner
+ ↩        dim row     you requested changes; no push since
+
+ DETAILS (␣ on a PR)
+ ✓ ✗ ◐                CI: passing, failing, running
+ ✓ ✗ · ○              reviewer: approved, changes, commented, pending
+
+ KEYS
+ j/k ↑/↓              move
+ ␣                    details on a PR, fold on a group
+ h/l ←/→              fold/unfold group
+ o                    open PR in browser
+ r                    refresh
+ g                    group by user / repo
+ a                    not approved / approved
+ ?                    help (close with ? or Esc)
+ q                    quit
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+ j/k scroll  ? or Esc close  q quit

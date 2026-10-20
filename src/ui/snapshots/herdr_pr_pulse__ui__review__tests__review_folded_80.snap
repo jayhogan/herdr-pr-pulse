@@ -1,0 +1,34 @@
+---
+source: src/ui/review.rs
+expression: "text(&draw(&a, 80, 30))"
+---
+ PR Pulse · Review │ 9 PRs                          user · not approved │ ↻ 18s
+ ★2 code owner  ↩1 waiting on author
+────────────────────────────────────────────────────────────────────────────────
+     #      TITLE                                            REPO         READY
+▶▸ maria-chen  3 PRs · oldest 4d
+
+▾ dan-o  3 PRs · oldest 3d
+     #87    tax: 2026 bracket table                          tax-engine   3d
+     #95    tax: state withholding lookup                    tax-engine   2d
+  ↩  #91    tax: quarterly estimate rounding                 tax-engine   1d
+
+▾ priya-s  1 PR · oldest 1d
+     #430   docket: archive old threads                      docket       1d
+
+▾ ghost  1 PR · oldest 1d
+     #1333  onboarding: fix intake step order                heard-ts     1d
+
+▾ sam-k  1 PR · oldest 6h
+     #418   docket: attach receipts to threads               docket       6h
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+ j/k ␣ info o open r ↻ g group a appr ? help

@@ -357,3 +357,58 @@ pub fn help_lines(width: u16) -> Vec<Line<'static>> {
         stack(&all, width, false)
     }
 }
+
+/// The Review view's `?` overlay: its two marks, the details' glyphs and its keys, in one
+/// column.
+#[allow(dead_code)] // wired up with the review view
+pub fn review_help_lines(width: u16) -> Vec<Line<'static>> {
+    let width = width as usize;
+    let show_color = width >= 60;
+    let k = |g: &'static str, m: &'static str| e(g, theme::bold(), "", m);
+    let secs = [
+        Section {
+            title: "MARKS  (left of the PR number)",
+            entries: vec![
+                e(
+                    "★",
+                    theme::yellow(),
+                    "yellow",
+                    "a team of yours is a requested code owner",
+                ),
+                e(
+                    "↩",
+                    theme::dim(),
+                    "dim row",
+                    "you requested changes; no push since",
+                ),
+            ],
+        },
+        Section {
+            title: "DETAILS  (␣ on a PR)",
+            entries: vec![
+                e("✓ ✗ ◐", theme::bold(), "", "CI: passing, failing, running"),
+                e(
+                    "✓ ✗ · ○",
+                    theme::bold(),
+                    "",
+                    "reviewer: approved, changes, commented, pending",
+                ),
+            ],
+        },
+        Section {
+            title: "KEYS",
+            entries: vec![
+                k("j/k ↑/↓", "move"),
+                k("␣", "details on a PR, fold on a group"),
+                k("h/l ←/→", "fold/unfold group"),
+                k("o", "open PR in browser"),
+                k("r", "refresh"),
+                k("g", "group by user / repo"),
+                k("a", "not approved / approved"),
+                k("?", "help (close with ? or Esc)"),
+                k("q", "quit"),
+            ],
+        },
+    ];
+    stack(&secs, width, show_color)
+}

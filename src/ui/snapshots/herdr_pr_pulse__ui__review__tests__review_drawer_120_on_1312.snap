@@ -1,0 +1,44 @@
+---
+source: src/ui/review.rs
+expression: t
+---
+ PR Pulse · Review │ 9 PRs · 5 people · 3 repos                                 group: user  show: not approved │ ↻ 18s
+ ★2 code owner  ↩1 waiting on author
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+     #      TITLE                                                                     REPO          USER          READY
+▾ maria-chen  3 PRs · oldest 4d
+  ★  #1298  billing: retry failed Stripe webhooks                                     heard-ts      maria-chen    4d
+▶ ★  #1312  billing: proration for mid-cycle plan change when the customer upgrades   heard-ts      maria-chen    2d
+     │ Adds proration when a customer moves plans mid-cycle.
+     │ Uses Stripe's preview invoice to compute the credit,
+     │ then applies it on the next invoice.
+     │ Behind the `billing.proration` flag.
+     │ Closes CORE-2210
+     │  ┌ CI                              │ Reviews
+     │  │ ✓ 3 checks pass                 │ ○ @billing  pending    (code owner)
+     │  │                                 │ ○ @priya-s  pending
+     │  │                                 │ · @dan-o    commented
+     │  └ ␣ close
+     #1320  billing: invoice PDF footer copy                                          heard-ts      maria-chen    5h
+
+▾ dan-o  3 PRs · oldest 3d
+     #87    tax: 2026 bracket table                                                   tax-engine    dan-o         3d
+     #95    tax: state withholding lookup                                             tax-engine    dan-o         2d
+  ↩  #91    tax: quarterly estimate rounding                                          tax-engine    dan-o         1d
+
+▾ priya-s  1 PR · oldest 1d
+     #430   docket: archive old threads                                               docket        priya-s       1d
+
+▾ ghost  1 PR · oldest 1d
+     #1333  onboarding: fix intake step order                                         heard-ts      ghost         1d
+
+▾ sam-k  1 PR · oldest 6h
+     #418   docket: attach receipts to threads                                        docket        sam-k         6h
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ j/k move  ␣ details/fold  o open  r refresh  g group  a approved⇄not  ? help

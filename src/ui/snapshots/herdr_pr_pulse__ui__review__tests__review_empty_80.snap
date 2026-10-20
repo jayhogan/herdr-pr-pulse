@@ -1,0 +1,20 @@
+---
+source: src/ui/review.rs
+expression: "text(&draw(&a, 80, 16))"
+---
+ PR Pulse · Review                                  user · not approved │ ↻ 18s
+
+────────────────────────────────────────────────────────────────────────────────
+  Nothing waiting on review in 3 repos.
+  a show approved (2)
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+ j/k ␣ info o open r ↻ g group a appr ? help
