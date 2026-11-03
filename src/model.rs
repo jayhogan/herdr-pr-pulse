@@ -826,7 +826,12 @@ mod tests {
             })
         };
         let mut v: Value = serde_json::from_str(DETAIL).unwrap();
-        let p0 = v["data"].as_object_mut().unwrap().values_mut().next().unwrap();
+        let p0 = v["data"]
+            .as_object_mut()
+            .unwrap()
+            .values_mut()
+            .next()
+            .unwrap();
         p0["statusCheckRollup"]["contexts"]["nodes"] = json!([
             run("Web", "gate", "SUCCESS", "2026-11-02T21:15:58Z"),
             run("Web", "gate", "FAILURE", "2026-11-02T21:07:55Z"),
