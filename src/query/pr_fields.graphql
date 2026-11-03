@@ -1,7 +1,8 @@
 # Appended to every detail query. Task 9 adds, per alias (they need the PR's own id or head ref):
 #   statusCheckRollup { state contexts(first: 100) { nodes {
 #     __typename
-#     ... on CheckRun { name status conclusion completedAt isRequired(pullRequestId: "<id>") }
+#     ... on CheckRun { name status conclusion startedAt completedAt isRequired(pullRequestId: "<id>")
+#       checkSuite { workflowRun { workflow { name } } } }
 #     ... on StatusContext { name: context state completedAt: createdAt isRequired(pullRequestId: "<id>") } } } }
 #   baseRef { name compare(headRef: "<headRefName>") { behindBy } }
 fragment prFields on PullRequest {
