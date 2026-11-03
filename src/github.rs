@@ -197,7 +197,8 @@ pub fn search(gh: &dyn Gh) -> Result<SearchResult, GhError> {
 pub(crate) fn rollup_fields(n: usize) -> String {
     format!(
         "statusCheckRollup {{ state contexts(first: 100) {{ nodes {{ __typename \
-         ... on CheckRun {{ name status conclusion completedAt isRequired(pullRequestId: $id{n}) }} \
+         ... on CheckRun {{ name status conclusion startedAt completedAt isRequired(pullRequestId: $id{n}) \
+         checkSuite {{ workflowRun {{ workflow {{ name }} }} }} }} \
          ... on StatusContext {{ name: context state completedAt: createdAt isRequired(pullRequestId: $id{n}) }} \
          }} }} }}"
     )

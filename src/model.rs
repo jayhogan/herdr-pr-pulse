@@ -258,7 +258,61 @@ struct RawContext {
     conclusion: Option<String>,
     state: Option<String>,
     completed_at: Option<DateTime<Utc>>,
+    started_at: Option<DateTime<Utc>>,
     is_required: Option<bool>,
+    check_suite: Option<RawCheckSuite>,
+}
+
+impl RawContext {
+    /// Identity across re-runs: a re-run reuses the workflow and job name. Same-named jobs
+    /// in different workflows are different checks.
+    fn key(&self) -> (String, Option<String>, Option<String>) {
+        let workflow = self
+            .check_suite
+            .as_ref()
+            .and_then(|s| s.workflow_run.as_ref())
+            .and_then(|r| r.workflow.as_ref())
+            .map(|w| w.name.clone());
+        (self.typename.clone(), workflow, self.name.clone())
+    }
+
+    /// Recency rank for picking the latest run. A run that has not started yet (no
+    /// timestamp) is the newest one.
+    fn recency(&self) -> DateTime<Utc> {
+        self.started_at
+            .or(self.completed_at)
+            .unwrap_or(DateTime::<Utc>::MAX_UTC)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RawCheckSuite {
+    workflow_run: Option<RawWorkflowRun>,
+}
+
+#[derive(Deserialize)]
+struct RawWorkflowRun {
+    workflow: Option<RawWorkflow>,
+}
+
+#[derive(Deserialize)]
+struct RawWorkflow {
+    name: String,
+}
+
+/// The rollup lists every run on the head commit, including ones a re-run or a cancelled
+/// concurrency group superseded. Keep only the latest run of each check, as `gh pr checks` does.
+fn latest_runs(contexts: Vec<RawContext>) -> Vec<RawContext> {
+    let mut latest: Vec<RawContext> = Vec::with_capacity(contexts.len());
+    for c in contexts {
+        match latest.iter_mut().find(|l| l.key() == c.key()) {
+            Some(l) if c.recency() > l.recency() => *l = c,
+            Some(_) => {}
+            None => latest.push(c),
+        }
+    }
+    latest
 }
 
 #[derive(Deserialize)]
@@ -439,11 +493,8 @@ fn build_reviewers(
 }
 
 fn convert_pr(raw: RawPr) -> Pr {
-    let checks: Vec<Check> = raw
-        .status_check_rollup
-        .and_then(|r| r.contexts)
-        .map(Nodes::items)
-        .unwrap_or_default()
+    let contexts = nodes_of(raw.status_check_rollup.and_then(|r| r.contexts));
+    let checks: Vec<Check> = latest_runs(contexts)
         .into_iter()
         .map(convert_check)
         .collect();
@@ -589,6 +640,7 @@ pub(crate) fn pr_from_value(v: Value) -> Result<Pr, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     const DETAIL: &str = include_str!("../tests/fixtures/detail.json");
     const BEFORE: &str = include_str!("../tests/fixtures/detail-before.json");
@@ -758,6 +810,34 @@ mod tests {
                 head_ref: "thread-model/sidebar".into()
             }
         );
+    }
+
+    /// The rollup keeps every run on the head commit. A cancelled first run whose gate failed
+    /// must not outlive the re-run that passed. Same-named jobs in other
+    /// workflows stay separate.
+    #[test]
+    fn superseded_check_runs_are_dropped() {
+        let run = |wf: &str, name: &str, concl: &str, started: &str| {
+            json!({
+                "__typename": "CheckRun", "name": name, "status": "COMPLETED",
+                "conclusion": concl, "startedAt": started, "completedAt": started,
+                "isRequired": true,
+                "checkSuite": { "workflowRun": { "workflow": { "name": wf } } }
+            })
+        };
+        let mut v: Value = serde_json::from_str(DETAIL).unwrap();
+        let p0 = v["data"].as_object_mut().unwrap().values_mut().next().unwrap();
+        p0["statusCheckRollup"]["contexts"]["nodes"] = json!([
+            run("Web", "gate", "SUCCESS", "2026-11-02T21:15:58Z"),
+            run("Web", "gate", "FAILURE", "2026-11-02T21:07:55Z"),
+            run("Web", "Lint", "CANCELLED", "2026-11-02T21:07:40Z"),
+            run("Web", "Lint", "SUCCESS", "2026-11-02T21:09:20Z"),
+            run("Ops", "Lint", "FAILURE", "2026-11-02T21:08:00Z"),
+        ]);
+        let p = pr_from_value(p0.take()).unwrap();
+        assert_eq!((p.ci.passed, p.ci.counted), (2, 3));
+        assert_eq!(p.ci.failing.len(), 1);
+        assert_eq!(p.ci.failing[0].name, "Lint");
     }
 
     #[test]
