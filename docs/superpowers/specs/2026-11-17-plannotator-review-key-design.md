@@ -71,11 +71,28 @@ Which pane: the stack's agent pane, as `⏎` resolves it, captured when `p` is p
 capture at press time, so the feedback goes to the agent that owned the PR when Jay started,
 even if he moves the cursor or the stack changes.
 
-When there's no agent pane (or herdr is unreachable) at press time, in Mine/Workspace:
-Plannotator does not open (Jay's decision). PR Pulse rings the terminal bell and shows
-`no agent pane for #N; not opening Plannotator` (or `herdr unreachable; …`) in the status line,
-like `⏎` reports a missing agent today. *My call:* bell plus status line rather than a modal
-dialog. The app has no dialogs, and the status line clears on the next key.
+### Revision 2026-11-17: the agent's checkout, not the PR link (Jay's feedback after a live test)
+
+Jay wants feedback on his own PRs to come back to the agent, not go to GitHub. Plannotator's PR
+review always offers "post to GitHub", and when used, stdout carries only
+`Pull request reviewed on GitHub: <url>`. Plannotator has no switch to hide that button, so in
+Mine/Workspace PR Pulse reviews the agent's worktree instead, which has no GitHub posting.
+
+Mine/Workspace, `p` on a PR (the one `o` would open):
+- **The stack's agent is on this PR's branch** (the row the agent dot sits on): run
+  `plannotator review --json --base origin/<PR base branch> <agent's worktree toplevel>`. The
+  feedback is forwarded to the agent as above. Status: `reviewing #N in Plannotator…`.
+- **Otherwise** (no agent on the stack, a layer the agent isn't on, or herdr unreachable): fall
+  back to `plannotator review --json <PR url>`, with nothing forwarded (Jay's decision). Status:
+  `reviewing #N on GitHub in Plannotator (no agent)`. This replaces the earlier "no agent → bell,
+  don't open" rule. The bell is gone.
+
+Approaches considered: reviewing the agent's checkout (chosen); reviewing `gh pr diff` through
+`--patch-file` (diff only, and only what's pushed); keeping the PR link (feedback can still go to
+GitHub). For layers the agent isn't on, Jay chose the PR link over the patch-file fallback.
+
+Narrow key hints (40-79 columns) gain `p review`. `j/k move` shortens to `j/k`, so the row fits
+in 40 columns.
 
 When delivery fails (agent blocked on a permission prompt, or the pane closed or herdr went down
 during the review):

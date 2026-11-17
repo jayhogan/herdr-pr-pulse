@@ -276,3 +276,91 @@ Expected: all pass. Snapshot diffs touch only footer/help lines.
 git add src/main.rs src/review/mod.rs src/ui README.md
 git commit -m "Open Plannotator from every view and forward feedback to the agent"
 ```
+
+---
+
+## Revision tasks (spec section "Revision 2026-11-17: the agent's checkout, not the PR link")
+
+Tasks 1-4 are done (commits f438ebd..76f137c). These tasks change what `p` opens in
+Mine/Workspace.
+
+**Global Constraints (revision):**
+- Mine/Workspace, the agent is on this PR's branch: argv `review --json --base origin/<base_ref> <toplevel>`. Feedback is forwarded to the agent.
+- Mine/Workspace, otherwise (no agent on the stack, agent on another layer, herdr unreachable): argv `review --json <url>`. Nothing is forwarded. Status `reviewing #N on GitHub in Plannotator (no agent)`.
+- Review view: argv `review --json <url>`. Status `reviewing #N in Plannotator…`, unchanged.
+- `Action::Bell`, `ring_bell` and both "not opening Plannotator" statuses are removed.
+- Narrow hints: `("j/k", "")`, `(" ␣", " info ")`, `("⏎", " jump ")`, `("o", " open ")`, `("p", " review ")`, `("?", " keys")`. The row must fit 40 columns. Review view gets the same narrow change.
+
+**Review Focus (revision):**
+1. **The agent is on layer 3 and you press `p` on layer 1.** This must fall back to the PR link, not review the agent's branch. Test: `p_on_layer_agent_isnt_on_falls_back`.
+2. **On a stack header whose first row isn't the agent's layer.** Same fallback as 1. Covered by the same rule (`selected()` row, else the first row). Test: `p_on_header_uses_first_rows_checkout`.
+3. **A worktree path with spaces.** It must stay one argv element. Test: `review_args_checkout`.
+4. **A base branch with a slash** (`feature/x`). It becomes `origin/feature/x` unchanged. Same test.
+5. **herdr unreachable.** Falls back to the PR link, no bell. Test: `p_with_herdr_unreachable_falls_back`.
+
+### Task 5: Review source and argv
+
+**Files:**
+- Modify: `src/plannotator.rs`
+
+**Interfaces:**
+- Produces:
+  - `pub enum Source { Pr, PrNoAgent, Checkout { path: String, base: String } }` (`Clone, Debug, PartialEq, Eq`). `Target` gains `pub source: Source`.
+  - `pub fn review_args(target: &Target) -> Vec<String>`.
+  - `Runner` becomes `Arc<dyn Fn(&[String]) -> Result<String, String> + Send + Sync>`. It takes the full argv after the program name. `command_runner(program)` runs `program args...`.
+  - `Reviews::start` builds the args with `review_args`. It returns `reviewing #N on GitHub in Plannotator (no agent)` for `PrNoAgent`, else `reviewing #N in Plannotator…`. The running-set key stays `url`.
+- Forwarding stays keyed on `target.pane` (Task 6 sets a pane only for `Checkout`).
+
+- [ ] **Step 1: Write the failing tests**
+```rust
+#[test] fn review_args_pr()        // Source::Pr and PrNoAgent → ["review","--json","https://github.com/heard/heard-ts/pull/1287"]
+#[test] fn review_args_checkout()  // Checkout{ path: "/w/my tree", base: "feature/x" } → ["review","--json","--base","origin/feature/x","/w/my tree"]
+#[test] fn start_without_agent_says_github() // PrNoAgent → "reviewing #1287 on GitHub in Plannotator (no agent)"
+```
+Update the existing `target()` helper (`source: Source::Pr`) and `gated()` (closure takes `&[String]`). Update `runner_failure_includes_stderr` to call `runner(&["review".into()])`.
+
+- [ ] **Step 2: Run them and confirm they fail.** `cargo test plannotator::`. Expected: compile errors.
+- [ ] **Step 3: Implement.** Fix the `Target` literals in `src/app.rs`, `src/review/app.rs`, `src/main.rs` and `src/review/mod.rs` tests with `source: Source::Pr` for now (Task 6 sets real sources).
+- [ ] **Step 4: Run them and confirm they pass.** `cargo test` and `cargo clippy --all-targets`. Expected: all pass, clean.
+- [ ] **Step 5: Commit** `Review a checkout or a PR link, chosen per target`.
+
+### Task 6: `p` picks the agent's checkout, else falls back to the PR link
+
+**Files:**
+- Modify: `src/workspaces.rs` (`PaneCheckout.toplevel`, set from `c.toplevel`; `AgentDot` construction)
+- Modify: `src/app.rs` (`AgentDot.path`, `review()`, remove `Action::Bell`, tests)
+- Modify: `src/main.rs`, `src/review/mod.rs` (remove `Bell` arms and `ring_bell`)
+- Modify: `src/review/app.rs` (`source: Source::Pr`)
+
+**Interfaces:**
+- Consumes: `Source`, `Target` (Task 5).
+- `PaneCheckout` gains `pub toplevel: String`. `AgentDot` gains `pub path: String` (the agent pane's toplevel).
+- `App::review()`:
+  - The selected row (or the first row on a header) has `checked_out`, and the group has an agent → `Target { pane: Some(dot.pane_id), source: Checkout { path: dot.path, base: pr.base_ref }, .. }`.
+  - Otherwise → `Target { pane: None, source: PrNoAgent, .. }`.
+  - Nothing selected → `select a PR`, as before.
+  - `herdr_ok == false` means no agents, so it falls back without a special case.
+
+- [ ] **Step 1: Rewrite the tests.** Replace `p_without_agent_bells` and `p_with_herdr_unreachable_bells`, and update `p_reviews_with_stack_agent` and `p_on_header_reviews_first_row`:
+```rust
+#[test] fn p_reviews_agent_checkout()              // select the checked-out row (find via r.checked_out, as the existing test at app.rs:1625 does) → Review(Target{ pane: Some("w1:p1"), source: Checkout{ path: <fixture toplevel>, base: <that PR's base_ref> }, .. })
+#[test] fn p_on_layer_agent_isnt_on_falls_back()   // select a non-checked-out layer of the same stack → pane None, source PrNoAgent
+#[test] fn p_on_header_uses_first_rows_checkout()  // cursor on that stack's header → source matches whether row 0 is checked_out
+#[test] fn p_without_agent_falls_back()            // #1279 (no agent) → pane None, source PrNoAgent; status untouched (None)
+#[test] fn p_with_herdr_unreachable_falls_back()   // as the old herdr test → pane None, source PrNoAgent
+```
+Update the `AgentDot` literal at `app.rs:1620` and the `PaneCheckout` literal in `workspaces.rs` tests with the new fields.
+
+- [ ] **Step 2: Run them and confirm they fail.** `cargo test p_`. Expected: compile errors or assertion failures.
+- [ ] **Step 3: Implement.** Remove `Action::Bell`, its `run_action` arms and `ring_bell` (and the now-unused `Write` import).
+- [ ] **Step 4: Run them and confirm they pass.** `cargo test`, `cargo clippy --all-targets`.
+- [ ] **Step 5: Commit** `p reviews the agent's checkout; falls back to the PR link without an agent`.
+
+### Task 7: Narrow hints, help and README
+
+**Files:** `src/ui/chrome.rs`, `src/ui/review.rs` (Narrow arm), `src/ui/help.rs` (Mine/Workspace line: `k("p", "review: agent's checkout, else PR")`), `README.md` (Mine/Workspace keys: "`p` review in Plannotator: the agent's checkout, with feedback sent to the agent, or the PR on GitHub when no agent is on it"), snapshots.
+
+- [ ] **Step 1:** Edit the Narrow hint arrays per Global Constraints, then the help and README lines.
+- [ ] **Step 2:** `INSTA_UPDATE=always cargo test`, then delete any `*.snap.new`. Read the diff: only hint/help lines change, and the 34- and 44-column footers aren't cut off.
+- [ ] **Step 3:** `cargo test`, `cargo clippy --all-targets`. All pass.
+- [ ] **Step 4: Commit** `Show p in narrow key hints; describe the checkout review`.
