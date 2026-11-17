@@ -676,6 +676,7 @@ impl App {
             repo: pr.repo,
             number: pr.number,
             pane: Some(dot.pane_id),
+            source: crate::plannotator::Source::Pr,
         })
     }
 
@@ -1820,6 +1821,7 @@ mod tests {
             repo: "heard/heard-ts".into(),
             number,
             pane: pane.map(String::from),
+            source: crate::plannotator::Source::Pr,
         })
     }
 

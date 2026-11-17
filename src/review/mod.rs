@@ -200,6 +200,7 @@ mod tests {
             repo: "o/r".into(),
             number: 1,
             pane: None,
+            source: crate::plannotator::Source::Pr,
         };
         assert!(!run_action(&mut app, Action::Review(target), None));
         assert_eq!(

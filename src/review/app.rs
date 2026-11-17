@@ -277,6 +277,7 @@ impl ReviewApp {
                         repo: p.pr.repo,
                         number: p.pr.number,
                         pane: None,
+                        source: crate::plannotator::Source::Pr,
                     });
                 }
                 None => self.status = Some("select a PR".into()),
@@ -684,6 +685,7 @@ mod tests {
                 repo: "heard/heard-ts".into(),
                 number: 1298,
                 pane: None,
+                source: crate::plannotator::Source::Pr,
             })
         );
     }

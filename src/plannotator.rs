@@ -44,13 +44,39 @@ impl Outcome {
     }
 }
 
-/// The PR under review, and the agent pane its feedback goes to (`None`: don't forward).
+/// What Plannotator opens.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Source {
+    /// The PR link (Review view): Plannotator can post to GitHub.
+    Pr,
+    /// The PR link because no agent is on the PR (Mine/Workspace fallback).
+    PrNoAgent,
+    /// The agent's worktree, diffed against `origin/<base>`. Plannotator can't post to GitHub,
+    /// so the feedback comes back to PR Pulse.
+    Checkout { path: String, base: String },
+}
+
+/// The PR under review, what to open for it, and the agent pane its feedback goes to
+/// (`None`: don't forward).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Target {
     pub url: String,
     pub repo: String,
     pub number: u32,
     pub pane: Option<String>,
+    pub source: Source,
+}
+
+/// The arguments to `plannotator` for this target.
+pub fn review_args(target: &Target) -> Vec<String> {
+    let mut args = vec!["review".to_string(), "--json".to_string()];
+    match &target.source {
+        Source::Pr | Source::PrNoAgent => args.push(target.url.clone()),
+        Source::Checkout { path, base } => {
+            args.extend(["--base".to_string(), format!("origin/{base}"), path.clone()]);
+        }
+    }
+    args
 }
 
 /// The last line of `stdout` that starts with `{`, parsed as an `Outcome`.
@@ -122,19 +148,19 @@ fn save(
     }
 }
 
-/// Runs one review of the PR at this URL to completion and returns its stdout.
-pub type Runner = Arc<dyn Fn(&str) -> Result<String, String> + Send + Sync>;
+/// Runs `plannotator` with these arguments to completion and returns its stdout.
+pub type Runner = Arc<dyn Fn(&[String]) -> Result<String, String> + Send + Sync>;
 
 /// Hands a message to the agent in a pane.
 type Deliver = Box<dyn Fn(&str, &str) -> Result<(), String>>;
 
-/// `<program> review --json <url>`. A spawn failure or a non-zero exit is an error, with the
+/// `<program> <args>`. A spawn failure or a non-zero exit is an error, with the
 /// last line Plannotator wrote to stderr (where it explains the failure).
 fn command_runner(program: &str) -> Runner {
     let program = program.to_string();
-    Arc::new(move |url: &str| {
+    Arc::new(move |args: &[String]| {
         let output = Command::new(&program)
-            .args(["review", "--json", url])
+            .args(args)
             .stdin(Stdio::null())
             .output()
             .map_err(|e| format!("could not run {program}: {e}"))?;
@@ -188,12 +214,16 @@ impl Reviews {
         if !self.running.insert(target.url.clone()) {
             return format!("#{n} already open in Plannotator");
         }
+        let status = match target.source {
+            Source::PrNoAgent => format!("reviewing #{n} on GitHub in Plannotator (no agent)"),
+            _ => format!("reviewing #{n} in Plannotator…"),
+        };
         let (runner, tx) = (self.runner.clone(), self.done_tx.clone());
         std::thread::spawn(move || {
-            let result = runner(&target.url);
+            let result = runner(&review_args(&target));
             let _ = tx.send((target, result));
         });
-        format!("reviewing #{n} in Plannotator…")
+        status
     }
 
     /// Settles every review that has finished; returns their status lines.
@@ -229,6 +259,7 @@ mod tests {
             repo: "heard/heard-ts".into(),
             number: 1287,
             pane: pane.map(String::from),
+            source: Source::Pr,
         }
     }
 
@@ -399,7 +430,7 @@ mod tests {
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
         let runner = command_runner(script.to_str().unwrap());
         assert_eq!(
-            runner("https://x/1"),
+            runner(&["review".to_string()]),
             Err("exit status: 1: Not in a VCS repo".into())
         );
     }
@@ -414,7 +445,7 @@ mod tests {
         let rx = Arc::new(Mutex::new(rx));
         let calls = Arc::new(AtomicUsize::new(0));
         let counted = calls.clone();
-        let runner: Runner = Arc::new(move |_url: &str| {
+        let runner: Runner = Arc::new(move |_args: &[String]| {
             counted.fetch_add(1, Ordering::SeqCst);
             rx.lock().unwrap().recv().unwrap()
         });
@@ -498,5 +529,59 @@ mod tests {
             "reviewing #1287 in Plannotator…"
         );
         assert_eq!(r.start(other), "reviewing #1291 in Plannotator…");
+    }
+
+    #[test]
+    fn review_args_pr() {
+        for source in [Source::Pr, Source::PrNoAgent] {
+            let t = Target {
+                source,
+                ..target(None)
+            };
+            assert_eq!(
+                review_args(&t),
+                [
+                    "review",
+                    "--json",
+                    "https://github.com/heard/heard-ts/pull/1287"
+                ]
+            );
+        }
+    }
+
+    #[test]
+    fn review_args_checkout() {
+        let t = Target {
+            source: Source::Checkout {
+                path: "/w/my tree".into(),
+                base: "feature/x".into(),
+            },
+            ..target(Some("w1:p1"))
+        };
+        assert_eq!(
+            review_args(&t),
+            [
+                "review",
+                "--json",
+                "--base",
+                "origin/feature/x",
+                "/w/my tree"
+            ]
+        );
+    }
+
+    #[test]
+    fn start_without_agent_says_github() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (runner, _tx, _) = gated();
+        let mut r = reviews(runner, tmp.path());
+        let t = Target {
+            source: Source::PrNoAgent,
+            ..target(None)
+        };
+        assert_eq!(
+            r.start(t),
+            "reviewing #1287 on GitHub in Plannotator (no agent)"
+        );
     }
 }
