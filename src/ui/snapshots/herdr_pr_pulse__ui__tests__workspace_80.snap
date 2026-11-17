@@ -31,4 +31,4 @@ expression: "text(&draw(&ws_app(), 80, 30))"
 
 
 ────────────────────────────────────────────────────────────────────────────────
- j/k ␣ info ⏎ jump o open r ↻ S sort h/l fold ? help
+ j/k ␣ info ⏎ jump o open p review r ↻ S sort h/l fold ? help

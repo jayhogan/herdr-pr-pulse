@@ -35,4 +35,4 @@ expression: "text(&draw(&drawer_app(), 44, 34))"
  └2 ◷  #415  thread sidebar
     ✓ ci 6/6      ○ 1    ·0   ◷ on #412
 
-j/k move ␣ details ⏎ jump o open ? keys
+j/k ␣ info ⏎ jump o open p review ? keys

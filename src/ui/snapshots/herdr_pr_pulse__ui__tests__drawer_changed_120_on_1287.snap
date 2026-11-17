@@ -37,4 +37,4 @@ expression: "text(&draw(&a, 120, 36))"
   △  ── 1  #1302  ● ready notes: tokenizer               ◐ running 4/7        · 0   ∅ no reviewers ? computing
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- j/k move  ␣ details  ⏎ jump  o open  r refresh  s authored⇄assigned  S sort  h/l fold  / filter  ? help
+ j/k move  ␣ details  ⏎ jump  o open  p review  r refresh  s authored⇄assigned  S sort  h/l fold  / filter  ? help

@@ -18,12 +18,12 @@ expression: "text(&draw(&a, 80, 30))"
  ␣                    details on a PR, fold on a group
  h/l ←/→              fold/unfold group
  o                    open PR in browser
+ p                    review in Plannotator
  r                    refresh
  g                    group by user / repo
  a                    not approved / approved
  ?                    help (close with ? or Esc)
  q                    quit
-
 
 
 

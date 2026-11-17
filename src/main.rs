@@ -8,6 +8,7 @@ mod git;
 mod github;
 mod herdr;
 mod model;
+mod plannotator;
 mod review;
 mod stacks;
 mod store;
@@ -16,7 +17,7 @@ mod workspaces;
 
 use std::env;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
@@ -31,6 +32,7 @@ use crate::changes::{Changes, Seen};
 use crate::fetch::{FetchEvent, FetchRequest, Poller};
 use crate::git::{FixtureBranches, GitBranches};
 use crate::github::GhCli;
+use crate::plannotator::Reviews;
 use crate::store::StateDir;
 
 const USAGE: &str = "usage: herdr-pr-pulse [workspace|mine|review] [--fixtures]";
@@ -228,6 +230,7 @@ struct Live {
     state: StateDir,
     branches: GitBranches,
     next_snapshot: Instant,
+    reviews: Reviews,
 }
 
 impl Live {
@@ -240,6 +243,7 @@ impl Live {
             state: StateDir::default_location(),
             branches: GitBranches::default(),
             next_snapshot: Instant::now(),
+            reviews: Reviews::new(feedback_dir()),
         }
     }
 
@@ -252,6 +256,9 @@ impl Live {
         }
         for req in self.poller.due(Instant::now()) {
             let _ = self.requests.send(req); // a dead worker leaves the last data on screen
+        }
+        for status in self.reviews.poll() {
+            app.set_status(status);
         }
         while let Ok(ev) = self.events.try_recv() {
             let done = match &ev {
@@ -291,8 +298,15 @@ fn run_action(app: &mut App, action: Action, live: Option<&mut Live>) -> bool {
             }
         }
         (Action::Open(url), None) => app.set_status(format!("fixtures: would open {url}")),
+        (Action::Review(t), Some(live)) => app.set_status(live.reviews.start(t)),
+        (Action::Review(t), None) => app.set_status(format!("fixtures: would review {}", t.url)),
     }
     false
+}
+
+/// Where feedback that couldn't reach its agent is saved.
+pub(crate) fn feedback_dir() -> PathBuf {
+    StateDir::default_location().dir().join("feedback")
 }
 
 /// `gh pr view <url> --web`, not waited on by the UI: a detached thread reaps the child.
@@ -463,5 +477,23 @@ mod tests {
             Some("fixtures: would open https://x/1")
         );
         assert!(!run_action(&mut app, Action::Refresh, None));
+    }
+
+    #[test]
+    fn fixtures_review_only_sets_status() {
+        let mut app = App::new(ViewKind::Workspace, Utc::now().offset().fix());
+        load_fixtures(&mut app).unwrap();
+        let target = crate::plannotator::Target {
+            url: "https://x/1".into(),
+            repo: "o/r".into(),
+            number: 1,
+            pane: None,
+            source: crate::plannotator::Source::Pr,
+        };
+        assert!(!run_action(&mut app, Action::Review(target), None));
+        assert_eq!(
+            app.screen(Utc::now()).status.as_deref(),
+            Some("fixtures: would review https://x/1")
+        );
     }
 }

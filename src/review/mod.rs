@@ -17,6 +17,7 @@ use crate::app::Action;
 use crate::config;
 use crate::fetch::{FetchRequest, Poller};
 use crate::github::GhCli;
+use crate::plannotator::Reviews;
 use crate::review::app::{ReviewApp, fixture_app};
 use crate::review::fetch::{ReviewCache, ReviewEvent};
 use crate::store::StateDir;
@@ -72,6 +73,7 @@ struct Live {
     requests: Sender<FetchRequest>,
     events: Receiver<ReviewEvent>,
     poller: Poller,
+    reviews: Reviews,
 }
 
 impl Live {
@@ -81,6 +83,7 @@ impl Live {
             requests,
             events,
             poller: Poller::new(Instant::now()),
+            reviews: Reviews::new(crate::feedback_dir()),
         }
     }
 
@@ -88,6 +91,9 @@ impl Live {
     fn tick(&mut self, app: &mut ReviewApp) {
         for req in self.poller.due(Instant::now()) {
             let _ = self.requests.send(req); // a dead worker leaves the last data on screen
+        }
+        for status in self.reviews.poll() {
+            app.set_status(status);
         }
         while let Ok(ev) = self.events.try_recv() {
             let done = match &ev {
@@ -116,6 +122,8 @@ fn run_action(app: &mut ReviewApp, action: Action, live: Option<&mut Live>) -> b
             }
         }
         (Action::Open(url), None) => app.set_status(format!("fixtures: would open {url}")),
+        (Action::Review(t), Some(live)) => app.set_status(live.reviews.start(t)),
+        (Action::Review(t), None) => app.set_status(format!("fixtures: would review {}", t.url)),
         _ => {}
     }
     false
@@ -181,5 +189,22 @@ mod tests {
             Some("fixtures: would open https://x/1")
         );
         assert!(!run_action(&mut app, Action::Refresh, None));
+    }
+
+    #[test]
+    fn fixtures_review_only_sets_status() {
+        let mut app = fixture_app();
+        let target = crate::plannotator::Target {
+            url: "https://x/1".into(),
+            repo: "o/r".into(),
+            number: 1,
+            pane: None,
+            source: crate::plannotator::Source::Pr,
+        };
+        assert!(!run_action(&mut app, Action::Review(target), None));
+        assert_eq!(
+            app.screen(Utc::now()).status.as_deref(),
+            Some("fixtures: would review https://x/1")
+        );
     }
 }

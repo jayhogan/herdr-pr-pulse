@@ -31,4 +31,4 @@ expression: text(&buf)
 
 
 ────────────────────────────────────────────────────────────────────────────────
- j/k ␣ info ⏎ jump o open r ↻ s mine⇄asgn S sort h/l fold ? help
+ j/k ␣ info ⏎ jump o open p review r ↻ s mine⇄asgn S sort h/l fold ? help

@@ -270,6 +270,18 @@ impl ReviewApp {
                     return Action::Open(p.pr.url);
                 }
             }
+            KeyCode::Char('p') => match self.selected_pr() {
+                Some(p) => {
+                    return Action::Review(crate::plannotator::Target {
+                        url: p.pr.url,
+                        repo: p.pr.repo,
+                        number: p.pr.number,
+                        pane: None,
+                        source: crate::plannotator::Source::Pr,
+                    });
+                }
+                None => self.status = Some("select a PR".into()),
+            },
             KeyCode::Char('r') => return Action::Refresh,
             KeyCode::Char('g') => {
                 self.group_by = match self.group_by {
@@ -660,6 +672,29 @@ mod tests {
             a.handle_key(key('o')),
             Action::Open("https://github.com/heard/heard-ts/pull/1298".into())
         );
+    }
+
+    #[test]
+    fn p_reviews_selected_pr_without_pane() {
+        let mut a = app();
+        a.handle_key(key('j'));
+        assert_eq!(
+            a.handle_key(key('p')),
+            Action::Review(crate::plannotator::Target {
+                url: "https://github.com/heard/heard-ts/pull/1298".into(),
+                repo: "heard/heard-ts".into(),
+                number: 1298,
+                pane: None,
+                source: crate::plannotator::Source::Pr,
+            })
+        );
+    }
+
+    #[test]
+    fn p_on_group_header_asks_for_a_pr() {
+        let mut a = app();
+        assert_eq!(a.handle_key(key('p')), Action::None);
+        assert_eq!(a.screen(now()).status.as_deref(), Some("select a PR"));
     }
 
     #[test]

@@ -67,7 +67,7 @@ panes:
 ```
 
 Keys: `j`/`k` or arrows move, `␣` details, `⏎` jump to the PR's agent pane, `o`
-open in browser, `r` refresh, `s` authored/assigned (Mine), `S` sort, `h`/`l`
+open in browser, `p` review in Plannotator: the agent's checkout, with feedback sent to the agent, or the PR on GitHub when no agent is on it, `r` refresh, `s` authored/assigned (Mine), `S` sort, `h`/`l`
 fold a stack, `/` filter, `?` help, `q` quits. `⏎` uses `herdr agent focus`, so
 it works for agent panes.
 
@@ -109,7 +109,7 @@ repos = ["Heard-Mental-Health/heard-ts", "Heard-Mental-Health/heard-app"]
 ```
 
 Keys: `j`/`k` move, `␣` opens a PR's details (first 5 lines of the description, CI,
-other reviewers) or folds a group, `h`/`l` fold, `o` open in browser, `r` refresh, `g`
+other reviewers) or folds a group, `h`/`l` fold, `o` open in browser, `p` review in Plannotator, `r` refresh, `g`
 group by user or repo, `a` switch between not approved and approved, `?` help, `q` quits.
 The ★ needs your teams, so the `gh` token needs `read:org` (`gh auth refresh -s read:org`).
 The view doesn't need a herdr pane; it runs in any terminal.

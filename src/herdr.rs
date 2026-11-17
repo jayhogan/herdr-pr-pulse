@@ -148,6 +148,30 @@ pub fn focus_pane(pane_id: &str) -> Result<(), String> {
     ))
 }
 
+/// `herdr agent prompt <pane_id> <text>`, with `text` as one argument (no shell).
+pub fn prompt_args(pane_id: &str, text: &str) -> Vec<String> {
+    ["agent", "prompt", pane_id, text]
+        .map(String::from)
+        .to_vec()
+}
+
+/// Submits `text` to the agent in `pane_id`. herdr rejects it when the agent is blocked.
+pub fn prompt_agent(pane_id: &str, text: &str) -> Result<(), String> {
+    let bin = herdr_bin();
+    let output = Command::new(&bin)
+        .args(prompt_args(pane_id, text))
+        .output()
+        .map_err(|e| format!("could not run {bin}: {e}"))?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    Err(format!(
+        "{bin} agent prompt {pane_id} failed: {}",
+        stderr.trim()
+    ))
+}
+
 impl Snapshot {
     /// True when the pane is on screen: its workspace is focused, its tab is that workspace's
     /// active tab, and no other pane is zoomed over it. Missing fields mean not visible.
@@ -196,6 +220,15 @@ impl Snapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn prompt_args_keep_message_as_one_arg() {
+        let msg = "line 1\n`rm -rf` $HOME; \"q\"";
+        assert_eq!(
+            prompt_args("w1:p1", msg),
+            vec!["agent", "prompt", "w1:p1", msg]
+        );
+    }
 
     fn fixture() -> Snapshot {
         parse_snapshot(include_str!("../tests/fixtures/snapshot.json")).unwrap()

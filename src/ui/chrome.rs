@@ -223,6 +223,7 @@ pub(super) fn footer(screen: &Screen, d: Density, width: usize) -> Vec<Line<'sta
                 ("␣", " details  "),
                 ("⏎", " jump  "),
                 ("o", " open  "),
+                ("p", " review  "),
                 ("r", " refresh  "),
             ];
             if mine {
@@ -242,6 +243,7 @@ pub(super) fn footer(screen: &Screen, d: Density, width: usize) -> Vec<Line<'sta
                 (" ␣", " info "),
                 ("⏎", " jump "),
                 ("o", " open "),
+                ("p", " review "),
                 ("r", " ↻ "),
             ];
             if mine {
@@ -251,10 +253,11 @@ pub(super) fn footer(screen: &Screen, d: Density, width: usize) -> Vec<Line<'sta
             k
         }
         Narrow => vec![
-            ("j/k", " move "),
-            ("␣", " details "),
+            ("j/k", ""),
+            (" ␣", " info "),
             ("⏎", " jump "),
             ("o", " open "),
+            ("p", " review "),
             ("?", " keys"),
         ],
         Tiny => vec![

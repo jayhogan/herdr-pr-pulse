@@ -15,6 +15,7 @@ use crate::fetch::{FetchEvent, RepoStatus};
 use crate::git::Branches;
 use crate::herdr::Snapshot;
 use crate::model::{MergeState, Pr, PrState};
+use crate::plannotator::Source;
 use crate::stacks::{self, Group, GroupKind};
 use crate::store::StateDir;
 use crate::workspaces::{self, Memory, PaneCheckout, Remembered};
@@ -35,6 +36,8 @@ pub enum Action {
     Focus(String),
     /// Open this PR URL in the browser.
     Open(String),
+    /// Review this PR in Plannotator.
+    Review(crate::plannotator::Target),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -95,6 +98,8 @@ pub struct FilterState {
 pub struct AgentDot {
     pub state: AgentState,
     pub pane_id: String,
+    /// The agent pane's checkout (git toplevel).
+    pub path: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -566,6 +571,7 @@ impl App {
                     return Action::Open(pr.url);
                 }
             }
+            KeyCode::Char('p') => return self.review(),
             _ => {}
         }
         Action::None
@@ -646,6 +652,38 @@ impl App {
                 Action::None
             }
         }
+    }
+
+    /// p: review the selected PR (on a header, its first row) in Plannotator. When the stack's
+    /// agent is on that PR's branch, review its worktree so the feedback comes back to it;
+    /// otherwise open the PR link, with nothing forwarded (spec §4, revision).
+    fn review(&mut self) -> Action {
+        let Some((g, row)) = self.selected() else {
+            self.status = Some("select a PR".into());
+            return Action::None;
+        };
+        let Some(row) = row.or_else(|| g.rows.into_iter().next()) else {
+            self.status = Some("select a PR".into());
+            return Action::None;
+        };
+        let pr = row.pr;
+        let (pane, source) = match row.agent {
+            Some(dot) => (
+                Some(dot.pane_id),
+                Source::Checkout {
+                    path: dot.path,
+                    base: pr.base_ref,
+                },
+            ),
+            None => (None, Source::PrNoAgent),
+        };
+        Action::Review(crate::plannotator::Target {
+            url: pr.url,
+            repo: pr.repo,
+            number: pr.number,
+            pane,
+            source,
+        })
     }
 
     /// Turns the spinner one frame; the event loop calls this once per draw.
@@ -1588,7 +1626,8 @@ mod tests {
             g.agent,
             Some(AgentDot {
                 state: AgentState::Idle,
-                pane_id: "w1:p1".into()
+                pane_id: "w1:p1".into(),
+                path: "/work/heard-ts-audit".into(),
             })
         );
         let row = g.rows.iter().find(|r| r.checked_out).unwrap();
@@ -1781,6 +1820,94 @@ mod tests {
         let s = a.screen(now());
         assert_eq!(s.status.as_deref(), Some("herdr unreachable"));
         assert!(!s.herdr_ok);
+    }
+
+    /// `p`'s target for PR `number` in heard-ts, with `source` and the agent `pane`.
+    fn review_target(number: u32, pane: Option<&str>, source: Source) -> Action {
+        Action::Review(crate::plannotator::Target {
+            url: format!("https://github.com/heard/heard-ts/pull/{number}"),
+            repo: "heard/heard-ts".into(),
+            number,
+            pane: pane.map(String::from),
+            source,
+        })
+    }
+
+    fn agent_app(dir: &Path) -> App {
+        let mut a = app();
+        with_agents(&mut a, &StateDir::new(dir.to_path_buf()));
+        a
+    }
+
+    #[test]
+    fn p_reviews_agent_checkout() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut a = agent_app(tmp.path());
+        select(&mut a, 1287); // audit/kafka-producer, where the agent w1:p1 is
+        let base = a.selected_pr().unwrap().base_ref;
+        assert!(!base.is_empty());
+        let source = Source::Checkout {
+            path: "/work/heard-ts-audit".into(),
+            base,
+        };
+        assert_eq!(
+            a.handle_key(key(KeyCode::Char('p'))),
+            review_target(1287, Some("w1:p1"), source)
+        );
+    }
+
+    #[test]
+    fn p_on_layer_agent_isnt_on_falls_back() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut a = agent_app(tmp.path());
+        select(&mut a, 1291); // same stack, a layer the agent isn't on
+        assert_eq!(
+            a.handle_key(key(KeyCode::Char('p'))),
+            review_target(1291, None, Source::PrNoAgent)
+        );
+    }
+
+    #[test]
+    fn p_on_header_uses_first_rows_checkout() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut a = agent_app(tmp.path());
+        select(&mut a, 1287);
+        a.cursor = 0; // the audit stack's header; its first row is #1284, not checked out
+        assert_eq!(a.selected_pr().unwrap().number, 1284);
+        assert_eq!(
+            a.handle_key(key(KeyCode::Char('p'))),
+            review_target(1284, None, Source::PrNoAgent)
+        );
+    }
+
+    #[test]
+    fn p_without_agent_falls_back() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut a = agent_app(tmp.path());
+        select(&mut a, 1279);
+        assert_eq!(
+            a.handle_key(key(KeyCode::Char('p'))),
+            review_target(1279, None, Source::PrNoAgent)
+        );
+        assert_eq!(a.screen(now()).status, None);
+    }
+
+    #[test]
+    fn p_with_herdr_unreachable_falls_back() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = StateDir::new(tmp.path().to_path_buf());
+        let mut a = agent_app(tmp.path());
+        a.apply_snapshot(
+            Err("herdr not running".into()),
+            &mut crate::git::FixtureBranches::embedded(),
+            &state,
+            now(),
+        );
+        select(&mut a, 1287);
+        assert_eq!(
+            a.handle_key(key(KeyCode::Char('p'))),
+            review_target(1287, None, Source::PrNoAgent)
+        );
     }
 
     #[test]

@@ -5,7 +5,7 @@ use std::env;
 use std::ffi::OsString;
 use std::fs::{self, File, TryLockError};
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 use serde::de::DeserializeOwned;
@@ -43,6 +43,10 @@ pub struct StateDir {
 impl StateDir {
     pub fn new(dir: PathBuf) -> Self {
         Self { dir }
+    }
+
+    pub fn dir(&self) -> &Path {
+        &self.dir
     }
 
     /// `${XDG_STATE_HOME:-~/.local/state}/herdr-pr-pulse`.
