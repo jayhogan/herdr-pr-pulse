@@ -31,4 +31,4 @@ expression: "text(&draw(&fixture_app(), 120, 30))"
 
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- j/k move  ␣ details/fold  o open  r refresh  g group  a approved⇄not  ? help
+ j/k move  ␣ details/fold  o open  p review  r refresh  g group  a approved⇄not  ? help

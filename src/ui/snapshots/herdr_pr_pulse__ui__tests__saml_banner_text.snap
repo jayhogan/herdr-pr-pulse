@@ -13,4 +13,4 @@ expression: text(&buf)
   ▲▲ ├─ 2  #1287  ● ready audit: kafka producer for aud… ✗ test-integration   ◇ 3   ✗ changes req  ◷ waiting on #1284
   △  ├─ 3  #1291  ● ready audit: consumer writes to aud… ✓ pass 9/9           ◇ 1   ○ pending 2    ◷ waiting on #1287
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- j/k move  ␣ details  ⏎ jump  o open  r refresh  s authored⇄assigned  S sort  h/l fold  / filter  ? help
+ j/k move  ␣ details  ⏎ jump  o open  p review  r refresh  s authored⇄assigned  S sort  h/l fold  / filter  ? help

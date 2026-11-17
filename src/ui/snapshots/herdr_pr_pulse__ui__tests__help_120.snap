@@ -35,12 +35,12 @@ expression: t
  ∅        yellow      no reviewers assigned (dim on drafts)
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
  KEYS
- j/k ↑/↓  move                                               ␣        details drawer
- ⏎        jump to agent pane                                 /        filter
- o        open PR in browser                                 S        sort
+ j/k ↑/↓  move                                               h/l ←/→  fold/unfold stack
+ ⏎        jump to agent pane                                 ␣        details drawer
+ o        open PR in browser                                 /        filter
+ p        review in Plannotator, feedback to agent           S        sort
  r        refresh                                            ?        help (close with ? or Esc)
  s        authored/assigned (Mine)                           q        quit
- h/l ←/→  fold/unfold stack
 
 
 

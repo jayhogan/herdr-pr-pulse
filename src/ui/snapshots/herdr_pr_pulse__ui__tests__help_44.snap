@@ -73,6 +73,8 @@ expression: "text(&draw(&a, 44, 90))"
  j/k ↑/↓  move
  ⏎        jump to agent pane
  o        open PR in browser
+ p        review in Plannotator, feedback to
+          agent
  r        refresh
  s        authored/assigned (Mine)
  h/l ←/→  fold/unfold stack
@@ -81,8 +83,6 @@ expression: "text(&draw(&a, 44, 90))"
  S        sort
  ?        help (close with ? or Esc)
  q        quit
-
-
 
 
 
