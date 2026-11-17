@@ -57,12 +57,15 @@ Flow (all views):
    the status line.
 4. Mine/Workspace: on exit, the thread sends the result back to the event loop over a channel,
    like fetch results. Then:
-   - The JSON carries `noop`. When `noop` is false (annotations, or "approve with notes") →
-     `herdr agent prompt <pane> <message>`. Status: `feedback on #N sent to agent`.
-   - When `noop` is true, nothing is sent. Status by decision: `#N approved`,
-     `#N review dismissed`, or `#N review closed, nothing to send` (`annotated` with no feedback,
-     or feedback Plannotator already posted to GitHub).
-   - Unparseable output or a non-zero exit → status shows the error.
+   - stdout's JSON is only `{decision, message}`. Feedback is sent with
+     `herdr agent prompt <pane> <message>` when there is some: `annotated` with a non-empty
+     message, or `approved` whose message isn't Plannotator's bare-approval text (that is,
+     approved with notes). Status: `feedback on #N sent to agent`.
+   - Otherwise nothing is sent. Status by decision: `#N approved`, `#N review dismissed`, or
+     `#N review closed, nothing to send`.
+   - A non-zero exit → status shows the error, with Plannotator's last stderr line.
+   - Unparseable output → saved to the feedback directory like a failed delivery, since it
+     may hold feedback.
 
 Which pane: the stack's agent pane, as `⏎` resolves it, captured when `p` is pressed. *My call:*
 capture at press time, so the feedback goes to the agent that owned the PR when Jay started,

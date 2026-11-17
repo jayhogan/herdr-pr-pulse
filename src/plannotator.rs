@@ -19,15 +19,29 @@ pub enum Decision {
     Dismissed,
 }
 
-/// The JSON record `plannotator review --json` prints when the review closes.
+/// The JSON record `plannotator review --json` prints to stdout when the review closes. It
+/// has only these two fields (no `noop`, which only Plannotator's host-result file carries).
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct Outcome {
     pub decision: Decision,
     #[serde(default)]
     pub message: String,
-    /// True when there is nothing for an agent to act on.
-    #[serde(default)]
-    pub noop: bool,
+}
+
+/// Plannotator's default message for an approval without notes (its
+/// `DEFAULT_REVIEW_APPROVED_PROMPT`). An approval with notes has a different message.
+pub const BARE_APPROVAL: &str =
+    "# Code Review\nCode review completed \u{2014} no changes requested.";
+
+impl Outcome {
+    /// True when the message has something for an agent to act on.
+    fn has_feedback(&self) -> bool {
+        match self.decision {
+            Decision::Dismissed => false,
+            Decision::Approved => self.message.trim() != BARE_APPROVAL,
+            Decision::Annotated => !self.message.trim().is_empty(),
+        }
+    }
 }
 
 /// The PR under review, and the agent pane its feedback goes to (`None`: don't forward).
@@ -50,42 +64,62 @@ pub fn parse_result(stdout: &str) -> Result<Outcome, String> {
     serde_json::from_str(line).map_err(|e| format!("invalid plannotator JSON: {e}"))
 }
 
-/// What to do with a finished review; returns the status line (`None`: say nothing). Feedback
-/// that `deliver` can't hand to the agent is saved under `feedback_dir`.
+/// What to do with a finished review, given Plannotator's stdout; returns the status line
+/// (`None`: say nothing). Feedback that `deliver` can't hand to the agent is saved under
+/// `feedback_dir`, and so is output that can't be parsed, since it may hold feedback.
 pub fn settle(
     target: &Target,
-    result: Result<Outcome, String>,
+    result: Result<String, String>,
     deliver: &dyn Fn(&str, &str) -> Result<(), String>,
     feedback_dir: &Path,
     now: DateTime<Local>,
 ) -> Option<String> {
     let n = target.number;
-    let outcome = match result {
-        Ok(o) => o,
-        Err(e) => return Some(format!("Plannotator failed for #{n}: {e}")),
+    let failed = |e: String| Some(format!("Plannotator failed for #{n}: {e}"));
+    let stdout = match result {
+        Ok(out) => out,
+        Err(e) => return failed(e),
     };
-    let pane = target.pane.as_deref()?;
-    if outcome.noop {
+    let outcome = parse_result(&stdout);
+    let Some(pane) = target.pane.as_deref() else {
+        return outcome.err().and_then(failed);
+    };
+    let outcome = match outcome {
+        Ok(o) => o,
+        Err(reason) => return Some(save(target, &stdout, &reason, feedback_dir, now)),
+    };
+    if !outcome.has_feedback() {
         return Some(match outcome.decision {
             Decision::Approved => format!("#{n} approved"),
             Decision::Dismissed => format!("#{n} review dismissed"),
             Decision::Annotated => format!("#{n} review closed, nothing to send"),
         });
     }
-    let Err(reason) = deliver(pane, &outcome.message) else {
-        return Some(format!("feedback on #{n} sent to agent"));
-    };
+    match deliver(pane, &outcome.message) {
+        Ok(()) => Some(format!("feedback on #{n} sent to agent")),
+        Err(reason) => Some(save(target, &outcome.message, &reason, feedback_dir, now)),
+    }
+}
+
+/// Writes `text` to `<feedback_dir>/<owner>-<repo>-<N>-<time>.md`; returns the status line.
+fn save(
+    target: &Target,
+    text: &str,
+    reason: &str,
+    feedback_dir: &Path,
+    now: DateTime<Local>,
+) -> String {
+    let n = target.number;
     let name = format!(
         "{}-{n}-{}.md",
         target.repo.replace('/', "-"),
         now.format("%Y%m%dT%H%M%S")
     );
     let path = feedback_dir.join(name);
-    let saved = fs::create_dir_all(feedback_dir).and_then(|()| fs::write(&path, &outcome.message));
-    Some(match saved {
+    match fs::create_dir_all(feedback_dir).and_then(|()| fs::write(&path, text)) {
         Ok(()) => format!("feedback on #{n} saved to {}: {reason}", path.display()),
         Err(e) => format!("feedback on #{n} not delivered or saved: {reason}; {e}"),
-    })
+    }
 }
 
 /// Runs one review of the PR at this URL to completion and returns its stdout.
@@ -94,17 +128,22 @@ pub type Runner = Arc<dyn Fn(&str) -> Result<String, String> + Send + Sync>;
 /// Hands a message to the agent in a pane.
 type Deliver = Box<dyn Fn(&str, &str) -> Result<(), String>>;
 
-/// `plannotator review --json <url>`; an error on a spawn failure or a non-zero exit.
-fn real_runner() -> Runner {
-    Arc::new(|url: &str| {
-        let output = Command::new("plannotator")
+/// `<program> review --json <url>`. A spawn failure or a non-zero exit is an error, with the
+/// last line Plannotator wrote to stderr (where it explains the failure).
+fn command_runner(program: &str) -> Runner {
+    let program = program.to_string();
+    Arc::new(move |url: &str| {
+        let output = Command::new(&program)
             .args(["review", "--json", url])
             .stdin(Stdio::null())
-            .stderr(Stdio::null())
             .output()
-            .map_err(|e| format!("could not run plannotator: {e}"))?;
+            .map_err(|e| format!("could not run {program}: {e}"))?;
         if !output.status.success() {
-            return Err(output.status.to_string());
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(match stderr.lines().rev().find(|l| !l.trim().is_empty()) {
+                Some(last) => format!("{}: {}", output.status, last.trim()),
+                None => output.status.to_string(),
+            });
         }
         Ok(String::from_utf8_lossy(&output.stdout).into_owned())
     })
@@ -117,15 +156,15 @@ pub struct Reviews {
     deliver: Deliver,
     feedback_dir: PathBuf,
     running: HashSet<String>,
-    done_tx: Sender<(Target, Result<Outcome, String>)>,
-    done_rx: Receiver<(Target, Result<Outcome, String>)>,
+    done_tx: Sender<(Target, Result<String, String>)>,
+    done_rx: Receiver<(Target, Result<String, String>)>,
 }
 
 impl Reviews {
     /// Real Plannotator; feedback goes to agents with `herdr agent prompt`.
     pub fn new(feedback_dir: PathBuf) -> Reviews {
         Reviews::with(
-            real_runner(),
+            command_runner("plannotator"),
             Box::new(crate::herdr::prompt_agent),
             feedback_dir,
         )
@@ -151,7 +190,7 @@ impl Reviews {
         }
         let (runner, tx) = (self.runner.clone(), self.done_tx.clone());
         std::thread::spawn(move || {
-            let result = runner(&target.url).and_then(|out| parse_result(&out));
+            let result = runner(&target.url);
             let _ = tx.send((target, result));
         });
         format!("reviewing #{n} in Plannotator…")
@@ -197,18 +236,15 @@ mod tests {
         Local.with_ymd_and_hms(2026, 11, 17, 14, 30, 0).unwrap()
     }
 
-    fn outcome(decision: Decision, noop: bool) -> Outcome {
-        Outcome {
-            decision,
-            message: "fix x".into(),
-            noop,
-        }
+    /// What `plannotator review --json` prints: only `decision` and `message`.
+    fn json(decision: &str, message: &str) -> Result<String, String> {
+        Ok(serde_json::json!({ "decision": decision, "message": message }).to_string() + "\n")
     }
 
     /// Settles `result`, recording each delivery; `fail` makes delivery fail with it.
     fn run(
         t: &Target,
-        result: Result<Outcome, String>,
+        result: Result<String, String>,
         fail: Option<&str>,
         dir: &Path,
     ) -> (Option<String>, Vec<(String, String)>) {
@@ -221,16 +257,19 @@ mod tests {
         (status, sent.into_inner())
     }
 
+    fn saved_path(dir: &Path) -> PathBuf {
+        dir.join("heard-heard-ts-1287-20261117T143000.md")
+    }
+
     #[test]
     fn parse_takes_last_json_line() {
-        let out = "Opening http://localhost:1234\n{\"v\":1,\"surface\":\"review\",\"decision\":\"annotated\",\"message\":\"fix x\\nand y\",\"noop\":false,\"annotationCount\":2}\n";
+        let out = "Opening http://localhost:1234\n{\"decision\":\"annotated\",\"message\":\"fix x\\nand y\"}\n";
         let o = parse_result(out).unwrap();
         assert_eq!(
             o,
             Outcome {
                 decision: Decision::Annotated,
                 message: "fix x\nand y".into(),
-                noop: false
             }
         );
     }
@@ -241,15 +280,10 @@ mod tests {
     }
 
     #[test]
-    fn settle_forwards_when_not_noop() {
+    fn settle_forwards_annotations() {
         let tmp = tempfile::tempdir().unwrap();
         let t = target(Some("w1:p1"));
-        let (status, sent) = run(
-            &t,
-            Ok(outcome(Decision::Annotated, false)),
-            None,
-            tmp.path(),
-        );
+        let (status, sent) = run(&t, json("annotated", "fix x"), None, tmp.path());
         assert_eq!(status.as_deref(), Some("feedback on #1287 sent to agent"));
         assert_eq!(sent, vec![("w1:p1".to_string(), "fix x".to_string())]);
     }
@@ -258,24 +292,42 @@ mod tests {
     fn settle_approved_with_notes_forwards() {
         let tmp = tempfile::tempdir().unwrap();
         let t = target(Some("w1:p1"));
-        let (status, sent) = run(&t, Ok(outcome(Decision::Approved, false)), None, tmp.path());
+        let notes =
+            "# Code Review \u{2014} Approved with Notes\nCode review completed.\nrename foo";
+        let (status, sent) = run(&t, json("approved", notes), None, tmp.path());
         assert_eq!(status.as_deref(), Some("feedback on #1287 sent to agent"));
         assert_eq!(sent.len(), 1);
     }
 
     #[test]
-    fn settle_noop_sends_nothing() {
+    fn settle_bare_approval_sends_nothing() {
         let tmp = tempfile::tempdir().unwrap();
         let t = target(Some("w1:p1"));
-        for (decision, want) in [
-            (Decision::Approved, "#1287 approved"),
-            (Decision::Dismissed, "#1287 review dismissed"),
-            (Decision::Annotated, "#1287 review closed, nothing to send"),
-        ] {
-            let (status, sent) = run(&t, Ok(outcome(decision, true)), None, tmp.path());
-            assert_eq!(status.as_deref(), Some(want));
-            assert!(sent.is_empty());
-        }
+        let (status, sent) = run(&t, json("approved", BARE_APPROVAL), None, tmp.path());
+        assert_eq!(status.as_deref(), Some("#1287 approved"));
+        assert!(sent.is_empty());
+    }
+
+    #[test]
+    fn settle_dismissed_sends_nothing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let t = target(Some("w1:p1"));
+        let msg = "Review session closed without feedback.";
+        let (status, sent) = run(&t, json("dismissed", msg), None, tmp.path());
+        assert_eq!(status.as_deref(), Some("#1287 review dismissed"));
+        assert!(sent.is_empty());
+    }
+
+    #[test]
+    fn settle_empty_annotation_sends_nothing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let t = target(Some("w1:p1"));
+        let (status, sent) = run(&t, json("annotated", "  \n"), None, tmp.path());
+        assert_eq!(
+            status.as_deref(),
+            Some("#1287 review closed, nothing to send")
+        );
+        assert!(sent.is_empty());
     }
 
     #[test]
@@ -284,11 +336,11 @@ mod tests {
         let t = target(Some("w1:p1"));
         let (status, _) = run(
             &t,
-            Ok(outcome(Decision::Annotated, false)),
+            json("annotated", "fix x"),
             Some("agent_blocked"),
             tmp.path(),
         );
-        let path = tmp.path().join("heard-heard-ts-1287-20261117T143000.md");
+        let path = saved_path(tmp.path());
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "fix x");
         assert_eq!(
             status,
@@ -297,6 +349,19 @@ mod tests {
                 path.display()
             ))
         );
+    }
+
+    #[test]
+    fn settle_saves_output_it_cannot_parse() {
+        let tmp = tempfile::tempdir().unwrap();
+        let t = target(Some("w1:p1"));
+        let raw = "{\"decision\":\"rejected\",\"message\":\"fix x\"}\n";
+        let (status, sent) = run(&t, Ok(raw.into()), None, tmp.path());
+        let path = saved_path(tmp.path());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), raw);
+        let want = format!("feedback on #1287 saved to {}: invalid", path.display());
+        assert!(status.unwrap().starts_with(&want));
+        assert!(sent.is_empty());
     }
 
     #[test]
@@ -316,14 +381,27 @@ mod tests {
     fn settle_without_pane_is_silent() {
         let tmp = tempfile::tempdir().unwrap();
         let t = target(None);
-        let (status, sent) = run(
-            &t,
-            Ok(outcome(Decision::Annotated, false)),
-            None,
-            tmp.path(),
-        );
+        let (status, sent) = run(&t, json("annotated", "fix x"), None, tmp.path());
         assert_eq!(status, None);
         assert!(sent.is_empty());
+    }
+
+    #[test]
+    fn runner_failure_includes_stderr() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let script = tmp.path().join("fake-plannotator");
+        std::fs::write(
+            &script,
+            "#!/bin/sh\necho 'warming up' >&2\necho 'Not in a VCS repo' >&2\nexit 1\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let runner = command_runner(script.to_str().unwrap());
+        assert_eq!(
+            runner("https://x/1"),
+            Err("exit status: 1: Not in a VCS repo".into())
+        );
     }
 
     /// A runner that counts its calls and finishes each review with the next value sent.
@@ -360,7 +438,7 @@ mod tests {
     }
 
     fn annotated_json() -> String {
-        r#"{"decision":"annotated","message":"fix x","noop":false}"#.to_string()
+        r#"{"decision":"annotated","message":"fix x"}"#.to_string()
     }
 
     #[test]
