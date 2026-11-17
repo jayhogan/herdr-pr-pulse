@@ -1,6 +1,5 @@
 ---
 source: src/ui/mod.rs
-assertion_line: 851
 expression: text(&buf)
 ---
  PR Pulse                         ⠹ loading
@@ -16,4 +15,4 @@ expression: text(&buf)
 
 
 
-j/k move ␣ details ⏎ jump o open ? keys
+j/k ␣ info ⏎ jump o open p review ? keys

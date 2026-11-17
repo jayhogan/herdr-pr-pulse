@@ -1,6 +1,5 @@
 ---
 source: src/ui/mod.rs
-assertion_line: 871
 expression: t
 ---
  PR Pulse                              ↻ 4s
@@ -16,4 +15,4 @@ expression: t
 
 
 
-j/k move ␣ details ⏎ jump o open ? keys
+j/k ␣ info ⏎ jump o open p review ? keys

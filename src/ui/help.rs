@@ -238,7 +238,7 @@ fn sections() -> (Vec<Section>, Vec<Section>, Section) {
             k("j/k ↑/↓", "move"),
             k("⏎", "jump to agent pane"),
             k("o", "open PR in browser"),
-            k("p", "review in Plannotator, feedback to agent"),
+            k("p", "review: agent's checkout, else PR"),
             k("r", "refresh"),
             k("s", "authored/assigned (Mine)"),
             k("h/l ←/→", "fold/unfold stack"),

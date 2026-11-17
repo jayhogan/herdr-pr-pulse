@@ -276,9 +276,10 @@ fn footer(s: &ReviewScreen, d: Density, width: usize) -> Vec<Line<'static>> {
                 ("?", " help"),
             ],
             Narrow => &[
-                ("j/k", " move "),
-                ("␣", " info "),
+                ("j/k", ""),
+                (" ␣", " info "),
                 ("o", " open "),
+                ("p", " review "),
                 ("?", " keys"),
             ],
             Tiny => &[

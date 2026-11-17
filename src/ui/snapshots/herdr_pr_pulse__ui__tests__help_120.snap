@@ -38,7 +38,7 @@ expression: t
  j/k ↑/↓  move                                               h/l ←/→  fold/unfold stack
  ⏎        jump to agent pane                                 ␣        details drawer
  o        open PR in browser                                 /        filter
- p        review in Plannotator, feedback to agent           S        sort
+ p        review: agent's checkout, else PR                  S        sort
  r        refresh                                            ?        help (close with ? or Esc)
  s        authored/assigned (Mine)                           q        quit
 

@@ -67,7 +67,7 @@ panes:
 ```
 
 Keys: `j`/`k` or arrows move, `␣` details, `⏎` jump to the PR's agent pane, `o`
-open in browser, `p` review in Plannotator (your feedback goes to the stack's agent), `r` refresh, `s` authored/assigned (Mine), `S` sort, `h`/`l`
+open in browser, `p` review in Plannotator: the agent's checkout, with feedback sent to the agent, or the PR on GitHub when no agent is on it, `r` refresh, `s` authored/assigned (Mine), `S` sort, `h`/`l`
 fold a stack, `/` filter, `?` help, `q` quits. `⏎` uses `herdr agent focus`, so
 it works for agent panes.
 

@@ -253,10 +253,11 @@ pub(super) fn footer(screen: &Screen, d: Density, width: usize) -> Vec<Line<'sta
             k
         }
         Narrow => vec![
-            ("j/k", " move "),
-            ("␣", " details "),
+            ("j/k", ""),
+            (" ␣", " info "),
             ("⏎", " jump "),
             ("o", " open "),
+            ("p", " review "),
             ("?", " keys"),
         ],
         Tiny => vec![
