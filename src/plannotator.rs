@@ -155,7 +155,7 @@ pub type Runner = Arc<dyn Fn(&[String]) -> Result<String, String> + Send + Sync>
 type Deliver = Box<dyn Fn(&str, &str) -> Result<(), String>>;
 
 /// `<program> <args>`. A spawn failure or a non-zero exit is an error, with the
-/// last line Plannotator wrote to stderr (where it explains the failure).
+/// first line Plannotator wrote to stderr (where it says what failed; later lines are hints).
 fn command_runner(program: &str) -> Runner {
     let program = program.to_string();
     Arc::new(move |args: &[String]| {
@@ -166,7 +166,7 @@ fn command_runner(program: &str) -> Runner {
             .map_err(|e| format!("could not run {program}: {e}"))?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(match stderr.lines().rev().find(|l| !l.trim().is_empty()) {
+            return Err(match stderr.lines().find(|l| !l.trim().is_empty()) {
                 Some(last) => format!("{}: {}", output.status, last.trim()),
                 None => output.status.to_string(),
             });
@@ -424,14 +424,14 @@ mod tests {
         let script = tmp.path().join("fake-plannotator");
         std::fs::write(
             &script,
-            "#!/bin/sh\necho 'warming up' >&2\necho 'Not in a VCS repo' >&2\nexit 1\n",
+            "#!/bin/sh\necho >&2\necho 'Base ref not found: origin/feature/x' >&2\necho 'Pass a branch, remote branch, tag, or commit that exists in this repository.' >&2\nexit 1\n",
         )
         .unwrap();
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
         let runner = command_runner(script.to_str().unwrap());
         assert_eq!(
             runner(&["review".to_string()]),
-            Err("exit status: 1: Not in a VCS repo".into())
+            Err("exit status: 1: Base ref not found: origin/feature/x".into())
         );
     }
 
