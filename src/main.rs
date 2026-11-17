@@ -8,6 +8,7 @@ mod git;
 mod github;
 mod herdr;
 mod model;
+mod plannotator;
 mod review;
 mod stacks;
 mod store;
