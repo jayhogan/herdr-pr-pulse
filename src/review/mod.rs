@@ -124,7 +124,6 @@ fn run_action(app: &mut ReviewApp, action: Action, live: Option<&mut Live>) -> b
         (Action::Open(url), None) => app.set_status(format!("fixtures: would open {url}")),
         (Action::Review(t), Some(live)) => app.set_status(live.reviews.start(t)),
         (Action::Review(t), None) => app.set_status(format!("fixtures: would review {}", t.url)),
-        (Action::Bell, _) => crate::ring_bell(),
         _ => {}
     }
     false

@@ -97,6 +97,8 @@ pub struct PaneCheckout {
     pub checkout_key: String,
     pub repo: String,
     pub branch: String,
+    /// The checkout's git toplevel.
+    pub toplevel: String,
     /// `None` when the pane runs no agent.
     pub agent: Option<AgentState>,
     pub focused: bool,
@@ -127,9 +129,12 @@ pub fn pane_checkouts(
         out.push(PaneCheckout {
             pane_id: pane.pane_id.clone(),
             workspace_id: pane.workspace_id.clone(),
-            checkout_key: snap.checkout_key(&pane.workspace_id).unwrap_or(c.toplevel),
+            checkout_key: snap
+                .checkout_key(&pane.workspace_id)
+                .unwrap_or_else(|| c.toplevel.clone()),
             repo: c.repo,
             branch: c.branch,
+            toplevel: c.toplevel,
             agent: has_agent.then(|| snap.agent_state(&pane.pane_id)),
             focused: pane.focused,
         });
@@ -206,6 +211,7 @@ pub fn stack_agents(
             let dot = AgentDot {
                 state: p.agent.unwrap_or(AgentState::Unknown),
                 pane_id: p.pane_id.clone(),
+                path: p.toplevel.clone(),
             };
             out.insert(g.key.clone(), (dot, on_layer));
         }
@@ -491,6 +497,7 @@ mod tests {
             checkout_key: format!("/work/{id}"),
             repo: "heard/heard-ts".into(),
             branch: branch.into(),
+            toplevel: format!("/work/{id}"),
             agent: Some(AgentState::Working),
             focused,
         };

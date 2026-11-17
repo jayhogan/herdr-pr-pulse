@@ -16,7 +16,7 @@ mod ui;
 mod workspaces;
 
 use std::env;
-use std::io::{self, Write};
+use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -300,7 +300,6 @@ fn run_action(app: &mut App, action: Action, live: Option<&mut Live>) -> bool {
         (Action::Open(url), None) => app.set_status(format!("fixtures: would open {url}")),
         (Action::Review(t), Some(live)) => app.set_status(live.reviews.start(t)),
         (Action::Review(t), None) => app.set_status(format!("fixtures: would review {}", t.url)),
-        (Action::Bell, _) => ring_bell(),
     }
     false
 }
@@ -308,12 +307,6 @@ fn run_action(app: &mut App, action: Action, live: Option<&mut Live>) -> bool {
 /// Where feedback that couldn't reach its agent is saved.
 pub(crate) fn feedback_dir() -> PathBuf {
     StateDir::default_location().dir().join("feedback")
-}
-
-/// The terminal bell, written straight to the terminal.
-pub(crate) fn ring_bell() {
-    let mut out = io::stdout();
-    let _ = out.write_all(b"\x07").and_then(|()| out.flush());
 }
 
 /// `gh pr view <url> --web`, not waited on by the UI: a detached thread reaps the child.
