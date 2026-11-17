@@ -292,6 +292,7 @@ fn run_action(app: &mut App, action: Action, live: Option<&mut Live>) -> bool {
             }
         }
         (Action::Open(url), None) => app.set_status(format!("fixtures: would open {url}")),
+        (Action::Review(_) | Action::Bell, _) => {}
     }
     false
 }

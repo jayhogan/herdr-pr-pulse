@@ -35,6 +35,10 @@ pub enum Action {
     Focus(String),
     /// Open this PR URL in the browser.
     Open(String),
+    /// Review this PR in Plannotator.
+    Review(crate::plannotator::Target),
+    /// Ring the terminal bell (the status line already says why).
+    Bell,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -566,6 +570,7 @@ impl App {
                     return Action::Open(pr.url);
                 }
             }
+            KeyCode::Char('p') => return self.review(),
             _ => {}
         }
         Action::None
@@ -646,6 +651,32 @@ impl App {
                 Action::None
             }
         }
+    }
+
+    /// p: review the selected PR in Plannotator, its feedback bound for the stack's agent.
+    /// Without an agent to send it to, rings the bell instead (spec §4).
+    fn review(&mut self) -> Action {
+        let Some(pr) = self.selected_pr() else {
+            self.status = Some("select a PR".into());
+            return Action::None;
+        };
+        if !self.herdr_ok {
+            self.status = Some("herdr unreachable; not opening Plannotator".into());
+            return Action::Bell;
+        }
+        let Some(dot) = self.selected_group().and_then(|g| g.agent) else {
+            self.status = Some(format!(
+                "no agent pane for #{}; not opening Plannotator",
+                pr.number
+            ));
+            return Action::Bell;
+        };
+        Action::Review(crate::plannotator::Target {
+            url: pr.url,
+            repo: pr.repo,
+            number: pr.number,
+            pane: Some(dot.pane_id),
+        })
     }
 
     /// Turns the spinner one frame; the event loop calls this once per draw.
@@ -1781,6 +1812,75 @@ mod tests {
         let s = a.screen(now());
         assert_eq!(s.status.as_deref(), Some("herdr unreachable"));
         assert!(!s.herdr_ok);
+    }
+
+    fn review_target(number: u32, pane: Option<&str>) -> Action {
+        Action::Review(crate::plannotator::Target {
+            url: format!("https://github.com/heard/heard-ts/pull/{number}"),
+            repo: "heard/heard-ts".into(),
+            number,
+            pane: pane.map(String::from),
+        })
+    }
+
+    #[test]
+    fn p_reviews_with_stack_agent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut a = app();
+        with_agents(&mut a, &StateDir::new(tmp.path().to_path_buf()));
+        select(&mut a, 1291);
+        assert_eq!(
+            a.handle_key(key(KeyCode::Char('p'))),
+            review_target(1291, Some("w1:p1"))
+        );
+    }
+
+    #[test]
+    fn p_on_header_reviews_first_row() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut a = app();
+        with_agents(&mut a, &StateDir::new(tmp.path().to_path_buf()));
+        select(&mut a, 1291);
+        a.cursor = 0;
+        let first = a.selected_pr().unwrap().number;
+        assert_ne!(first, 1291);
+        assert_eq!(
+            a.handle_key(key(KeyCode::Char('p'))),
+            review_target(first, Some("w1:p1"))
+        );
+    }
+
+    #[test]
+    fn p_without_agent_bells() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut a = app();
+        with_agents(&mut a, &StateDir::new(tmp.path().to_path_buf()));
+        select(&mut a, 1279);
+        assert_eq!(a.handle_key(key(KeyCode::Char('p'))), Action::Bell);
+        assert_eq!(
+            a.screen(now()).status.as_deref(),
+            Some("no agent pane for #1279; not opening Plannotator")
+        );
+    }
+
+    #[test]
+    fn p_with_herdr_unreachable_bells() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = StateDir::new(tmp.path().to_path_buf());
+        let mut a = app();
+        with_agents(&mut a, &state);
+        a.apply_snapshot(
+            Err("herdr not running".into()),
+            &mut crate::git::FixtureBranches::embedded(),
+            &state,
+            now(),
+        );
+        select(&mut a, 1291);
+        assert_eq!(a.handle_key(key(KeyCode::Char('p'))), Action::Bell);
+        assert_eq!(
+            a.screen(now()).status.as_deref(),
+            Some("herdr unreachable; not opening Plannotator")
+        );
     }
 
     #[test]
